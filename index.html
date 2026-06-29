@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="First Light" />
+<meta name="theme-color" content="#232A4D" />
+<title>First Light</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,ital@9..144,300..700,0..1&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --night:#232A4D;
+    --night-2:#2E3760;
+    --parchment:#EFE3CC;
+    --ink:#2A2620;
+    --line: rgba(42,38,32,0.14);
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--parchment); color:var(--ink); font-family:'Work Sans', sans-serif; -webkit-font-smoothing:antialiased; }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  .band{ background: linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%); color:#EFE3CC; padding: 28px 20px 30px; }
+  .band-top{ display:flex; justify-content:space-between; align-items:flex-start; }
+  .band h1{ font-family:'Fraunces', serif; font-weight:600; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
+  .band .desc{ font-size:13px; opacity:0.75; margin:0; max-width:480px; line-height:1.4; }
+  .band .date{ font-family:'IBM Plex Mono', monospace; font-size:12px; opacity:0.7; text-align:right; white-space:nowrap; }
+
+  .arc-wrap{ margin-top:18px; display:flex; flex-direction:column; align-items:center; }
+  .arc-label{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; opacity:0.65; margin-top:8px; }
+  .arc-frac{ font-family:'Fraunces', serif; font-size:15px; margin-top:2px; opacity:0.9; }
+  .arc-empty{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; opacity:0.55; margin-top:6px; max-width:260px; text-align:center; }
+
+  .content{ max-width:760px; margin:0 auto; padding: 22px 16px 56px; }
+  .grid{ display:grid; grid-template-columns: 1fr; gap:16px; }
+  @media (min-width: 680px){ .grid{ grid-template-columns: 1fr 1fr; } }
+
+  .card{ background:#FBF6EA; border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px; box-shadow: 0 1px 0 rgba(42,38,32,0.03); }
+  .card.full{ grid-column: 1 / -1; }
+  .card-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+  .card-head .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .card-head h2{ font-family:'Fraunces', serif; font-weight:600; font-size:18px; margin:0; }
+  .card-head .sub{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; opacity:0.5; text-transform:uppercase; letter-spacing:1px; margin-left:auto; }
+  .icon-btn{ background:none; border:none; cursor:pointer; opacity:0.4; font-size:14px; padding:2px 4px; }
+  .icon-btn:hover{ opacity:0.85; }
+
+  .row{ display:flex; align-items:center; gap:12px; padding:9px 0; }
+  .row + .row{ border-top:1px dashed var(--line); }
+  .row .label{ flex:1; font-size:14.5px; line-height:1.3; }
+  .row .meta{ font-family:'IBM Plex Mono', monospace; font-size:11px; opacity:0.55; white-space:nowrap; }
+  .check{ width:24px; height:24px; border-radius:7px; border:1.5px solid rgba(42,38,32,0.25); background:transparent; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition: background 0.15s, border-color 0.15s; }
+  .check.on{ border-color:transparent; }
+  .check svg{ width:13px; height:13px; opacity:0; transition:opacity 0.15s; }
+  .check.on svg{ opacity:1; }
+  .streak{ font-family:'IBM Plex Mono', monospace; font-size:11px; padding:2px 7px; border-radius:20px; background:rgba(42,38,32,0.06); white-space:nowrap; }
+
+  .tally{ display:flex; gap:5px; }
+  .tally .tick{ width:16px; height:16px; border-radius:5px; border:1.5px solid rgba(42,38,32,0.25); flex-shrink:0; }
+  .tally .tick.on{ border-color:transparent; }
+
+  .stage-row{ display:flex; gap:5px; margin-top:4px; flex-wrap:wrap; }
+  .stage-pill{ flex:1; min-width:54px; text-align:center; font-family:'IBM Plex Mono', monospace; font-size:9.5px; padding:6px 2px; border-radius:7px; border:1.5px solid rgba(42,38,32,0.18); cursor:pointer; text-transform:uppercase; letter-spacing:0.3px; color:var(--ink); opacity:0.55; background:transparent; }
+  .stage-pill.on{ border-color:transparent; color:#fff; opacity:1; }
+
+  .progress-track{ flex:1; height:7px; background:rgba(42,38,32,0.08); border-radius:6px; position:relative; }
+  .progress-fill{ position:absolute; left:0; top:0; bottom:0; border-radius:6px; }
+
+  input[type=text], input[type=number], select{ font-family:'Work Sans', sans-serif; font-size:13.5px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:#fff; width:100%; }
+  .add-row{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .add-row input{ flex:1; min-width:120px; }
+  .add-row button, .util-btn{ font-family:'IBM Plex Mono', monospace; font-size:11px; border:none; border-radius:8px; padding:0 12px; height:34px; cursor:pointer; color:#fff; white-space:nowrap; }
+  .util-btn.outline{ background:transparent; color:var(--ink); border:1px solid var(--line); }
+  .util-btn.tiny{ height:28px; font-size:10.5px; padding:0 9px; }
+
+  .item-row{ display:flex; align-items:center; gap:10px; padding:6px 0; font-size:13.5px; }
+  .item-row .name{ flex:1; }
+  .item-row .name.done{ text-decoration:line-through; opacity:0.5; }
+  .small-x{ background:none; border:none; cursor:pointer; opacity:0.35; font-size:14px; padding:2px; }
+  .small-x:hover{ opacity:0.8; }
+
+  .goal-form{ background:rgba(42,38,32,0.035); border:1px dashed var(--line); border-radius:10px; padding:12px; margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .goal-form label{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; opacity:0.55; margin-bottom:2px; display:block; }
+  .form-row{ display:flex; gap:8px; }
+  .form-row > div{ flex:1; }
+  .form-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+  .type-hint{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; opacity:0.5; line-height:1.4; }
+
+  .new-cat-card{ display:flex; gap:8px; }
+  .new-cat-card input{ flex:1; }
+
+  .summary-stat{ display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:13.5px; }
+  .summary-stat + .summary-stat{ border-top:1px dashed var(--line); }
+  .summary-section-label{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:1px; opacity:0.5; margin:14px 0 2px; }
+  .summary-section-label:first-child{ margin-top:0; }
+
+  .score-month{ padding:14px 0; }
+  .score-month + .score-month{ border-top:1px solid var(--line); }
+  .score-month-head{ display:flex; align-items:center; gap:12px; }
+  .score-month-name{ font-family:'Fraunces', serif; font-size:15.5px; font-weight:600; flex:1; }
+  .score-badge{ font-family:'Fraunces', serif; font-weight:600; font-size:15px; color:#fff; border-radius:8px; padding:3px 11px; min-width:42px; text-align:center; }
+  .score-live-tag{ font-family:'IBM Plex Mono', monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px; opacity:0.5; }
+  .score-cats{ display:flex; gap:6px; margin-top:9px; flex-wrap:wrap; }
+  .score-chip{ font-family:'IBM Plex Mono', monospace; font-size:10px; padding:3px 8px; border-radius:20px; color:#fff; white-space:nowrap; }
+  .score-chip.na{ background:rgba(42,38,32,0.08); color:var(--ink); opacity:0.45; }
+
+  .footer-note{ text-align:center; font-family:'IBM Plex Mono', monospace; font-size:10.5px; opacity:0.4; margin-top:30px; }
+  .loading{ padding:60px 20px; text-align:center; font-family:'IBM Plex Mono', monospace; color:var(--night); opacity:0.6; }
+  .backup-bar{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .empty-state{ font-family:'IBM Plex Mono', monospace; font-size:12px; opacity:0.5; text-align:center; padding:30px 10px; }
+  .guide-card{ padding:22px 20px; }
+  .guide-card h3{ font-family:'Fraunces', serif; font-size:19px; margin:0 0 6px; }
+  .guide-card p.lead{ font-size:13.5px; opacity:0.75; margin:0 0 16px; line-height:1.5; }
+  .guide-step{ display:flex; gap:12px; margin-bottom:14px; align-items:flex-start; }
+  .guide-step .num{ font-family:'Fraunces', serif; font-weight:600; font-size:15px; width:26px; height:26px; border-radius:50%; background:#232A4D; color:#EFE3CC; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .guide-step .txt{ font-size:13.5px; line-height:1.5; }
+  .guide-step .txt b{ font-weight:600; }
+  .guide-types{ margin-top:6px; border-top:1px solid var(--line); padding-top:14px; }
+  .guide-type-row{ display:flex; gap:10px; padding:6px 0; font-size:13px; align-items:baseline; }
+  .guide-type-row .tname{ font-weight:600; min-width:78px; flex-shrink:0; }
+  .guide-type-row .tdesc{ opacity:0.7; line-height:1.4; }
+  .guide-note{ font-family:'IBM Plex Mono', monospace; font-size:11px; opacity:0.5; margin-top:14px; line-height:1.5; }
+  .card-head .dot.dot-pick{ cursor:pointer; width:14px; height:14px; transition: transform 0.1s; }
+  .card-head .dot.dot-pick:hover{ transform: scale(1.15); }
+  .cat-name-input{
+    font-family:'Fraunces', serif; font-weight:600; font-size:18px; border:1px solid var(--line); background:#fff;
+    padding:4px 8px; border-radius:7px; flex:1; min-width:60px; color:var(--ink);
+  }
+  .cat-name-input:focus{ outline:none; border-color:rgba(42,38,32,0.4); }
+  .swatch-row{ display:flex; gap:8px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px dashed var(--line); }
+  .swatch{ width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .swatch.on{ border-color:var(--ink); }
+  .toast{ background:#232A4D; color:#EFE3CC; font-family:'IBM Plex Mono', monospace; font-size:12px; padding:11px 16px; border-radius:10px; margin-bottom:14px; text-align:center; }
+  .icon-btn.confirming, .small-x.confirming{ color:#fff; background:#A8444B; opacity:1; border-radius:6px; padding:2px 7px; font-family:'IBM Plex Mono', monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; }
+</style>
+</head>
+<body>
+
+<div class="band">
+  <div class="band-top">
+    <div>
+      <h1>First Light</h1>
+      <p class="desc">A daily dashboard to track habits, goals, and progress over time.</p>
+    </div>
+    <div class="date mono" id="dateLabel"></div>
+  </div>
+  <div class="arc-wrap" id="arcWrap"></div>
+</div>
+
+<div class="content">
+  <div id="app" class="loading">loading your dashboard…</div>
+</div>
+
+<input type="file" id="importFile" accept="application/json" style="display:none" />
+
+<script>
+const STORAGE_KEY = 'first-light-template-v1';
+const PALETTE = ['#C99A3B','#C1623D','#6E8B6B','#B06A78','#6B7585','#4B7B7E','#8B6BA8','#5C8AA6'];
+
+function todayStr(d=new Date()){
+  const tz = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+  return tz.toISOString().slice(0,10);
+}
+function monthKey(dateStr){ return dateStr.slice(0,7); }
+function thisMonth(){ return monthKey(todayStr()); }
+function addDays(dateStr, n){
+  const d = new Date(dateStr+'T00:00:00');
+  d.setDate(d.getDate()+n);
+  return todayStr(d);
+}
+function weekDates(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = (d.getDay()+6)%7;
+  const monday = addDays(dateStr, -dow);
+  return Array.from({length:7}, (_,i)=>addDays(monday,i));
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+function daysInMonth(m){ const [y,mo]=m.split('-').map(Number); return new Date(y,mo,0).getDate(); }
+function daysConsideredFor(m){ return m===thisMonth() ? new Date().getDate() : daysInMonth(m); }
+function clampPct(n){ return Math.max(0, Math.min(100, n)); }
+function uid(prefix){ return prefix + Date.now() + Math.floor(Math.random()*1000); }
+
+function defaultState(){
+  return { categories: [], goals: [], checkLogs: {}, tallyLogs: {}, amountLogs: {}, stageState: {}, stageHistory: {}, listItems: {} };
+}
+
+let state = null;
+let ui = { addingGoalFor:null, draft:{}, toast:null, confirmDeleteCategory:null, confirmDeleteGoal:null };
+
+function showToast(msg){
+  ui.toast = msg;
+  render();
+  setTimeout(() => { if(ui.toast===msg){ ui.toast=null; render(); } }, 3500);
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state = raw ? Object.assign(defaultState(), JSON.parse(raw)) : defaultState();
+  } catch(e){ console.error('Could not read local storage', e); state = defaultState(); }
+  render();
+}
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e){ console.error('Could not write to local storage', e); }
+}
+
+/* ---------- Categories ---------- */
+function addCategory(name){
+  if(!name.trim()) return;
+  state.categories.push({ id: uid('cat'), name: name.trim(), color: PALETTE[state.categories.length % PALETTE.length] });
+  saveState(); render();
+}
+function removeCategory(id){
+  if(ui.confirmDeleteCategory !== id){ ui.confirmDeleteCategory = id; render(); return; }
+  ui.confirmDeleteCategory = null;
+  state.goals.filter(g=>g.categoryId===id).forEach(g => removeGoalData(g.id));
+  state.goals = state.goals.filter(g=>g.categoryId!==id);
+  state.categories = state.categories.filter(c=>c.id!==id);
+  saveState(); render();
+}
+function renameCategory(id, name){
+  if(!name.trim()) return;
+  const cat = state.categories.find(c=>c.id===id);
+  cat.name = name.trim();
+  ui.editingCategory = null;
+  saveState(); render();
+}
+function startEditCategory(id){ ui.editingCategory = id; render(); }
+function cancelEditCategory(){ ui.editingCategory = null; render(); }
+function toggleColorPicker(id){
+  ui.colorPickerFor = (ui.colorPickerFor===id) ? null : id;
+  render();
+}
+function setCategoryColor(id, color){
+  const cat = state.categories.find(c=>c.id===id);
+  cat.color = color;
+  ui.colorPickerFor = null;
+  saveState(); render();
+}
+
+/* ---------- Goals ---------- */
+function removeGoalData(id){
+  delete state.checkLogs[id]; delete state.tallyLogs[id]; delete state.amountLogs[id];
+  delete state.stageState[id]; delete state.stageHistory[id]; delete state.listItems[id];
+}
+function removeGoal(id){
+  if(ui.confirmDeleteGoal !== id){ ui.confirmDeleteGoal = id; render(); return; }
+  ui.confirmDeleteGoal = null;
+  removeGoalData(id);
+  state.goals = state.goals.filter(g=>g.id!==id);
+  saveState(); render();
+}
+function startAddGoal(categoryId){
+  ui.addingGoalFor = categoryId;
+  ui.draft = { type:'checkbox', cadence:'daily', name:'', target:4, unit:'', resetCadence:'weekly', stagesText:'' };
+  render();
+}
+function cancelAddGoal(){ ui.addingGoalFor = null; render(); }
+function updateDraft(field, value){ ui.draft[field] = value; render(); }
+function createGoal(categoryId){
+  const d = ui.draft;
+  if(!d.name || !d.name.trim()){ showToast('Please give the goal a name.'); return; }
+  const goal = { id: uid('goal'), categoryId, name: d.name.trim(), type: d.type, createdAt: todayStr() };
+  if(d.type==='checkbox'){ goal.cadence = d.cadence; }
+  else if(d.type==='tally'){ goal.cadence = d.cadence; goal.target = Number(d.target)||1; }
+  else if(d.type==='amount'){ goal.target = Number(d.target)||1; goal.unit = (d.unit||'').trim(); goal.resetCadence = d.resetCadence; }
+  else if(d.type==='stages'){
+    const stages = (d.stagesText||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(stages.length < 2){ showToast('Please enter at least two stages, separated by commas (e.g. Start, In Progress, Done).'); return; }
+    goal.stages = stages;
+    state.stageState[goal.id] = 0;
+  }
+  state.goals.push(goal);
+  ui.addingGoalFor = null;
+  saveState(); render();
+}
+
+/* ---------- Checkbox type ---------- */
+function toggleCheckbox(goalId, cadence){
+  if(!state.checkLogs[goalId]) state.checkLogs[goalId] = {};
+  const key = cadence==='monthly' ? thisMonth() : todayStr();
+  state.checkLogs[goalId][key] = !state.checkLogs[goalId][key];
+  saveState(); render();
+}
+function checkboxDoneToday(goalId){ return !!(state.checkLogs[goalId] && state.checkLogs[goalId][todayStr()]); }
+function checkboxDoneThisWeek(goalId){
+  const log = state.checkLogs[goalId] || {};
+  return weekDates(todayStr()).some(d => log[d]);
+}
+function checkboxDoneThisMonth(goalId){ return !!(state.checkLogs[goalId] && state.checkLogs[goalId][thisMonth()]); }
+function dailyStreak(goalId){
+  const log = state.checkLogs[goalId] || {};
+  let streak = 0; let cursor = todayStr();
+  if(!log[cursor]) cursor = addDays(cursor,-1);
+  while(log[cursor]){ streak++; cursor = addDays(cursor,-1); }
+  return streak;
+}
+function weeklyStreak(goalId){
+  const log = state.checkLogs[goalId] || {};
+  let streak = 0; let weekStart = weekDates(todayStr())[0]; const current = weekStart;
+  while(true){
+    const hit = weekDates(weekStart).some(d=>log[d]);
+    if(hit){ streak++; weekStart = addDays(weekStart,-7); }
+    else if(weekStart===current){ weekStart = addDays(weekStart,-7); }
+    else break;
+  }
+  return streak;
+}
+
+/* ---------- Tally type ---------- */
+function logTally(goalId){
+  if(!state.tallyLogs[goalId]) state.tallyLogs[goalId] = [];
+  state.tallyLogs[goalId].push(todayStr());
+  saveState(); render();
+}
+function undoTally(goalId){
+  const arr = state.tallyLogs[goalId] || [];
+  if(arr.length){ arr.pop(); saveState(); render(); }
+}
+function tallyCountInPeriod(goalId, cadence, refDate=todayStr()){
+  const arr = state.tallyLogs[goalId] || [];
+  if(cadence==='weekly'){ const wk = weekDates(refDate); return arr.filter(d=>wk.includes(d)).length; }
+  if(cadence==='monthly'){ const m = monthKey(refDate); return arr.filter(d=>monthKey(d)===m).length; }
+  if(cadence==='yearly'){ const y = refDate.slice(0,4); return arr.filter(d=>d.slice(0,4)===y).length; }
+  return arr.length;
+}
+
+/* ---------- Amount type ---------- */
+function logAmount(goalId, amount){
+  if(!amount || isNaN(amount)) return;
+  if(!state.amountLogs[goalId]) state.amountLogs[goalId] = [];
+  state.amountLogs[goalId].push({ date: todayStr(), amount: Number(amount) });
+  saveState(); render();
+}
+function amountSumInPeriod(goalId, resetCadence, refDate=todayStr()){
+  const arr = state.amountLogs[goalId] || [];
+  let filtered = arr;
+  if(resetCadence==='daily') filtered = arr.filter(e=>e.date===refDate);
+  else if(resetCadence==='weekly'){ const wk = weekDates(refDate); filtered = arr.filter(e=>wk.includes(e.date)); }
+  else if(resetCadence==='monthly'){ const m = monthKey(refDate); filtered = arr.filter(e=>monthKey(e.date)===m); }
+  else if(resetCadence==='yearly'){ const y = refDate.slice(0,4); filtered = arr.filter(e=>e.date.slice(0,4)===y); }
+  return filtered.reduce((a,e)=>a+e.amount,0);
+}
+function amountSumAllTime(goalId){
+  return (state.amountLogs[goalId]||[]).reduce((a,e)=>a+e.amount,0);
+}
+
+/* ---------- Stages type ---------- */
+function setStage(goal, index){
+  const clamped = Math.max(0, Math.min(goal.stages.length-1, index));
+  state.stageState[goal.id] = clamped;
+  const m = thisMonth();
+  if(!state.stageHistory[goal.id]) state.stageHistory[goal.id] = {};
+  state.stageHistory[goal.id][m] = clamped;
+  saveState(); render();
+}
+
+/* ---------- List type ---------- */
+function addListItem(goalId, text){
+  if(!text.trim()) return;
+  if(!state.listItems[goalId]) state.listItems[goalId] = [];
+  state.listItems[goalId].unshift({ id: uid('item'), text: text.trim(), done:false, date: todayStr() });
+  saveState(); render();
+}
+function toggleListItem(goalId, itemId){
+  const item = (state.listItems[goalId]||[]).find(i=>i.id===itemId);
+  if(item){ item.done = !item.done; saveState(); render(); }
+}
+function removeListItem(goalId, itemId){
+  state.listItems[goalId] = (state.listItems[goalId]||[]).filter(i=>i.id!==itemId);
+  saveState(); render();
+}
+
+/* ---------- Backup ---------- */
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'first-light-backup-' + todayStr() + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const parsed = JSON.parse(e.target.result);
+      state = Object.assign(defaultState(), parsed);
+      saveState(); render();
+      showToast('Backup imported successfully.');
+    } catch(err){ showToast('That file could not be read as a valid backup.'); }
+  };
+  reader.readAsText(file);
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('importFile').addEventListener('change', (e) => {
+    if(e.target.files[0]) importBackup(e.target.files[0]);
+    e.target.value = '';
+  });
+});
+
+/* ---------- Icons / small helpers ---------- */
+function checkIcon(){ return '<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function cadenceLabel(c){ return c==='daily' ? 'day' : c==='weekly' ? 'week' : c==='monthly' ? 'month' : c==='yearly' ? 'year' : c; }
+
+/* ---------- Arc (today's light) ---------- */
+function renderArc(){
+  const dailyGoals = state.goals.filter(g=>g.type==='checkbox' && g.cadence==='daily');
+  const wrap = document.getElementById('arcWrap');
+  if(dailyGoals.length===0){
+    wrap.innerHTML = `
+      <svg width="220" height="120" viewBox="0 0 220 120">
+        <path d="M 20 110 A 90 90 0 0 1 200 110" stroke="rgba(239,227,204,0.18)" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <circle cx="110" cy="110" r="3.5" fill="#EFE3CC" opacity="0.5"/>
+      </svg>
+      <div class="arc-label">today's light</div>
+      <div class="arc-empty">Add a daily goal to start tracking your light each day.</div>`;
+    return;
+  }
+  const count = dailyGoals.filter(g=>checkboxDoneToday(g.id)).length;
+  const frac = count/dailyGoals.length;
+  const cx=110, cy=110, r=90;
+  function pointAt(t){ const a = Math.PI*(1-t); return [cx + r*Math.cos(a), cy - Math.abs(r*Math.sin(a))]; }
+  const segs = 60;
+  let bgPath = `M ${cx-r} ${cy} `;
+  for(let i=1;i<=segs;i++){ const [x,y]=pointAt(i/segs); bgPath += `L ${x} ${y} `; }
+  let fgPath = '';
+  if(frac>0){
+    fgPath = `M ${cx-r} ${cy} `;
+    const fSegs = Math.max(1, Math.round(segs*frac));
+    for(let i=1;i<=fSegs;i++){ const [x,y]=pointAt(i/segs); fgPath += `L ${x} ${y} `; }
+  }
+  wrap.innerHTML = `
+    <svg width="220" height="120" viewBox="0 0 220 120">
+      <defs>
+        <linearGradient id="dawnGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#232A4D"/><stop offset="55%" stop-color="#C1623D"/><stop offset="100%" stop-color="#C99A3B"/>
+        </linearGradient>
+      </defs>
+      <path d="${bgPath}" stroke="rgba(239,227,204,0.18)" stroke-width="10" fill="none" stroke-linecap="round"/>
+      ${fgPath ? `<path d="${fgPath}" stroke="url(#dawnGrad)" stroke-width="10" fill="none" stroke-linecap="round"/>` : ''}
+      <circle cx="${cx}" cy="${cy}" r="3.5" fill="#EFE3CC" opacity="0.5"/>
+    </svg>
+    <div class="arc-label">today's light</div>
+    <div class="arc-frac mono">${count} / ${dailyGoals.length}</div>`;
+}
+
+/* ---------- Goal row rendering ---------- */
+function renderGoalRow(goal, color){
+  if(goal.type==='checkbox'){
+    if(goal.cadence==='daily'){
+      const on = checkboxDoneToday(goal.id);
+      const streak = dailyStreak(goal.id);
+      return `<div class="row">
+        <button class="check ${on?'on':''}" style="${on?`background:${color};`:''}" onclick="toggleCheckbox('${goal.id}','daily')">${checkIcon()}</button>
+        <div class="label">${goal.name}</div>
+        <div class="streak">${streak>0 ? streak+' day'+(streak===1?'':'s') : '—'}</div>
+        <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+      </div>`;
+    }
+    if(goal.cadence==='weekly'){
+      const on = checkboxDoneThisWeek(goal.id);
+      const streak = weeklyStreak(goal.id);
+      return `<div class="row">
+        <button class="check ${on?'on':''}" style="${on?`background:${color};`:''}" onclick="toggleCheckbox('${goal.id}','weekly')">${checkIcon()}</button>
+        <div class="label">${goal.name}</div>
+        <div class="streak">${streak>0 ? streak+' wk streak' : '—'}</div>
+        <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+      </div>`;
+    }
+    const on = checkboxDoneThisMonth(goal.id);
+    return `<div class="row">
+      <button class="check ${on?'on':''}" style="${on?`background:${color};`:''}" onclick="toggleCheckbox('${goal.id}','monthly')">${checkIcon()}</button>
+      <div class="label">${goal.name}</div>
+      <div class="meta">this month</div>
+      <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+    </div>`;
+  }
+  if(goal.type==='tally'){
+    const count = tallyCountInPeriod(goal.id, goal.cadence);
+    const ticks = goal.target<=10;
+    return `<div class="row">
+      <div class="label">${goal.name} — ${count} / ${goal.target} this ${cadenceLabel(goal.cadence)}</div>
+      <button class="util-btn tiny" style="background:${color};" onclick="logTally('${goal.id}')">+1</button>
+      <button class="icon-btn" onclick="undoTally('${goal.id}')" title="undo last">↺</button>
+      <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+    </div>
+    ${ticks ? `<div class="row" style="padding-top:0;border-top:none;"><div class="tally">${Array.from({length:goal.target}).map((_,i)=>`<div class="tick ${count>i?'on':''}" style="${count>i?`background:${color};`:''}"></div>`).join('')}</div></div>` : ''}`;
+  }
+  if(goal.type==='amount'){
+    const sum = amountSumInPeriod(goal.id, goal.resetCadence);
+    const pct = clampPct(sum/goal.target*100);
+    return `<div class="row" style="flex-direction:column; align-items:stretch; gap:6px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="label">${goal.name}</div>
+        <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+      </div>
+      <div class="meta">${sum} / ${goal.target} ${goal.unit||''} this ${goal.resetCadence==='never'?'(all time)':cadenceLabel(goal.resetCadence)}</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%; background:${color};"></div></div>
+        <input type="number" id="amt_${goal.id}" placeholder="0" style="width:70px;" />
+        <button class="util-btn tiny" style="background:${color};" onclick="logAmount('${goal.id}', document.getElementById('amt_${goal.id}').value); document.getElementById('amt_${goal.id}').value='';">Log</button>
+      </div>
+    </div>`;
+  }
+  if(goal.type==='stages'){
+    const stage = state.stageState[goal.id] || 0;
+    return `<div class="row" style="flex-direction:column; align-items:stretch; gap:6px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="label">${goal.name}</div>
+        <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+      </div>
+      <div class="stage-row">
+        ${goal.stages.map((s,i)=>`<div class="stage-pill ${i<=stage?'on':''}" style="${i<=stage?`background:${color};`:''}" onclick="setStage(${JSON.stringify(goal).replace(/"/g,'&quot;')}, ${i})">${s}</div>`).join('')}
+      </div>
+    </div>`;
+  }
+  if(goal.type==='list'){
+    const items = state.listItems[goal.id] || [];
+    return `<div class="row" style="flex-direction:column; align-items:stretch; gap:6px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="label">${goal.name}</div>
+        <button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>
+      </div>
+      ${items.map(it => `
+        <div class="item-row">
+          <button class="check ${it.done?'on':''}" style="width:20px;height:20px;${it.done?`background:${color};`:''}" onclick="toggleListItem('${goal.id}','${it.id}')">${checkIcon()}</button>
+          <span class="name ${it.done?'done':''}">${it.text}</span>
+          <button class="small-x" onclick="removeListItem('${goal.id}','${it.id}')">✕</button>
+        </div>`).join('')}
+      <div class="add-row">
+        <input type="text" id="list_${goal.id}" placeholder="Add an item…" />
+        <button style="background:${color};" onclick="addListItem('${goal.id}', document.getElementById('list_${goal.id}').value); document.getElementById('list_${goal.id}').value='';">Add</button>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+/* ---------- Add-goal form ---------- */
+function renderGoalForm(categoryId){
+  const d = ui.draft;
+  let fields = '';
+  if(d.type==='checkbox'){
+    fields = `<div><label>How often</label>
+      <select onchange="updateDraft('cadence', this.value)">
+        <option value="daily" ${d.cadence==='daily'?'selected':''}>Daily</option>
+        <option value="weekly" ${d.cadence==='weekly'?'selected':''}>Weekly</option>
+        <option value="monthly" ${d.cadence==='monthly'?'selected':''}>Monthly</option>
+      </select></div>
+      <div class="type-hint">Check it off once per day, week, or month — builds a streak.</div>`;
+  } else if(d.type==='tally'){
+    fields = `<div class="form-row">
+        <div><label>How often</label>
+          <select onchange="updateDraft('cadence', this.value)">
+            <option value="weekly" ${d.cadence==='weekly'?'selected':''}>Per week</option>
+            <option value="monthly" ${d.cadence==='monthly'?'selected':''}>Per month</option>
+            <option value="yearly" ${d.cadence==='yearly'?'selected':''}>Per year</option>
+          </select></div>
+        <div><label>Target count</label>
+          <input type="number" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
+      </div>
+      <div class="type-hint">Tap "+1" each time you do it — like going to the gym 4x a week.</div>`;
+  } else if(d.type==='amount'){
+    fields = `<div class="form-row">
+        <div><label>Target amount</label>
+          <input type="number" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
+        <div><label>Unit (optional)</label>
+          <input type="text" placeholder="e.g. $, pages, miles" value="${d.unit}" onchange="updateDraft('unit', this.value)" /></div>
+      </div>
+      <div><label>Resets</label>
+        <select onchange="updateDraft('resetCadence', this.value)">
+          <option value="daily" ${d.resetCadence==='daily'?'selected':''}>Daily</option>
+          <option value="weekly" ${d.resetCadence==='weekly'?'selected':''}>Weekly</option>
+          <option value="monthly" ${d.resetCadence==='monthly'?'selected':''}>Monthly</option>
+          <option value="yearly" ${d.resetCadence==='yearly'?'selected':''}>Yearly</option>
+          <option value="never" ${d.resetCadence==='never'?'selected':''}>Never (running total)</option>
+        </select></div>
+      <div class="type-hint">Log an amount each time — like saving money or reading pages, toward a target.</div>`;
+  } else if(d.type==='stages'){
+    fields = `<div><label>Stages (comma-separated, in order)</label>
+        <input type="text" placeholder="e.g. Start, Study, Practice, Exam, Complete" value="${d.stagesText||''}" onchange="updateDraft('stagesText', this.value)" /></div>
+      <div class="type-hint">Move through custom stages over time — like studying for a certification.</div>`;
+  } else if(d.type==='list'){
+    fields = `<div class="type-hint">An open-ended checklist or log — add items whenever, check them off if helpful. Not included in monthly grading.</div>`;
+  }
+  return `
+    <div class="goal-form">
+      <div><label>Goal name</label><input type="text" placeholder="e.g. Read scriptures" value="${d.name||''}" onchange="updateDraft('name', this.value)" /></div>
+      <div><label>Type</label>
+        <select onchange="updateDraft('type', this.value)">
+          <option value="checkbox" ${d.type==='checkbox'?'selected':''}>Checkbox (done / not done)</option>
+          <option value="tally" ${d.type==='tally'?'selected':''}>Tally (count occurrences toward a target)</option>
+          <option value="amount" ${d.type==='amount'?'selected':''}>Amount (log a number toward a target)</option>
+          <option value="stages" ${d.type==='stages'?'selected':''}>Stages (move through custom steps)</option>
+          <option value="list" ${d.type==='list'?'selected':''}>List (open-ended checklist or log)</option>
+        </select>
+      </div>
+      ${fields}
+      <div class="form-actions">
+        <button class="util-btn outline" onclick="cancelAddGoal()">Cancel</button>
+        <button class="util-btn" style="background:#232A4D;" onclick="createGoal('${categoryId}')">Create goal</button>
+      </div>
+    </div>`;
+}
+
+/* ---------- Scorecard engine ---------- */
+function gradeLetter(pct){
+  if(pct>=95) return 'A+'; if(pct>=90) return 'A'; if(pct>=75) return 'B';
+  if(pct>=50) return 'C'; if(pct>=25) return 'D'; return 'F';
+}
+function gradeColor(pct){
+  if(pct>=90) return '#6E8B6B'; if(pct>=75) return '#C99A3B'; if(pct>=50) return '#C1623D';
+  if(pct>=25) return '#B06A78'; return '#A8444B';
+}
+function weeksElapsedIn(m){ return Math.max(Math.ceil(daysConsideredFor(m)/7), 1); }
+
+// Returns null if the goal didn't exist yet during month m.
+// Otherwise returns { days, startDay } — days = how many days of month m count toward
+// this goal's grading (from its creation date forward), startDay = day-of-month it started.
+function effectiveWindowFor(goal, m){
+  const created = goal.createdAt || '1970-01-01';
+  const createdMonth = created.slice(0,7);
+  const daysConsidered = daysConsideredFor(m);
+  if(createdMonth > m) return null;
+  if(createdMonth === m){
+    const startDay = parseInt(created.slice(8,10),10);
+    const days = Math.max(1, daysConsidered - startDay + 1);
+    return { days, startDay };
+  }
+  return { days: daysConsidered, startDay: 1 };
+}
+
+function goalPctForMonth(goal, m){
+  const isCurrent = m===thisMonth();
+  const win = effectiveWindowFor(goal, m);
+  if(!win) return null; // goal didn't exist yet this month
+  const daysConsidered = Math.max(daysConsideredFor(m),1);
+  const effDays = win.days;
+  const effWeeks = Math.max(Math.ceil(effDays/7), 1);
+  const monthNum = parseInt(m.split('-')[1],10);
+  const proration = effDays/daysConsidered; // fraction of the month this goal has existed for
+
+  if(goal.type==='checkbox'){
+    const log = state.checkLogs[goal.id] || {};
+    if(goal.cadence==='daily'){
+      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]).length;
+      return clampPct(count/effDays*100);
+    }
+    if(goal.cadence==='weekly'){
+      const loggedDays = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]);
+      const weeksHit = new Set(loggedDays.map(d=>weekDates(d)[0]));
+      return clampPct(weeksHit.size/effWeeks*100);
+    }
+    return log[m] ? 100 : 0;
+  }
+  if(goal.type==='tally'){
+    const arr = state.tallyLogs[goal.id] || [];
+    const countThisMonth = arr.filter(d=>monthKey(d)===m).length;
+    if(goal.cadence==='monthly') return clampPct(countThisMonth/Math.max(goal.target*proration,1)*100);
+    if(goal.cadence==='weekly') return clampPct(countThisMonth/(goal.target*effWeeks)*100);
+    if(goal.cadence==='yearly'){
+      const y = m.slice(0,4);
+      const countThisYear = arr.filter(d=>d.slice(0,4)===y && d<=m+'-31').length;
+      return clampPct(countThisYear/(goal.target*monthNum/12)*100);
+    }
+  }
+  if(goal.type==='amount'){
+    if(goal.resetCadence==='never') return null;
+    const arr = state.amountLogs[goal.id] || [];
+    if(goal.resetCadence==='daily'){
+      const sum = arr.filter(e=>monthKey(e.date)===m).reduce((a,e)=>a+e.amount,0);
+      return clampPct(sum/(goal.target*effDays)*100);
+    }
+    if(goal.resetCadence==='weekly'){
+      const sum = arr.filter(e=>monthKey(e.date)===m).reduce((a,e)=>a+e.amount,0);
+      return clampPct(sum/(goal.target*effWeeks)*100);
+    }
+    if(goal.resetCadence==='monthly'){
+      const sum = arr.filter(e=>monthKey(e.date)===m).reduce((a,e)=>a+e.amount,0);
+      return clampPct(sum/Math.max(goal.target*proration,1)*100);
+    }
+    if(goal.resetCadence==='yearly'){
+      const y = m.slice(0,4);
+      const sum = arr.filter(e=>e.date.slice(0,4)===y && e.date<=m+'-31').reduce((a,e)=>a+e.amount,0);
+      return clampPct(sum/(goal.target*monthNum/12)*100);
+    }
+  }
+  if(goal.type==='stages'){
+    const hist = state.stageHistory[goal.id] || {};
+    let stage = hist[m];
+    if(stage===undefined){ if(isCurrent) stage = state.stageState[goal.id]||0; else return null; }
+    return clampPct(stage/(goal.stages.length-1)*100);
+  }
+  return null; // list type — not graded
+}
+function gradeForMonth(m){
+  const categories = {};
+  state.categories.forEach(cat => {
+    const goalsInCat = state.goals.filter(g=>g.categoryId===cat.id);
+    const pcts = goalsInCat.map(g=>goalPctForMonth(g,m)).filter(p=>p!==null);
+    categories[cat.id] = pcts.length ? pcts.reduce((a,b)=>a+b,0)/pcts.length : null;
+  });
+  const applicable = Object.values(categories).filter(p=>p!==null);
+  const overallPct = applicable.length ? applicable.reduce((a,b)=>a+b,0)/applicable.length : null;
+  return { overallPct, categories, isCurrentMonth: m===thisMonth() };
+}
+function collectMonths(){
+  const months = new Set([thisMonth()]);
+  Object.values(state.checkLogs).forEach(log => Object.keys(log).forEach(k => { if(k.length===10) months.add(monthKey(k)); else if(k.length===7) months.add(k); }));
+  Object.values(state.tallyLogs).forEach(arr => arr.forEach(d=>months.add(monthKey(d))));
+  Object.values(state.amountLogs).forEach(arr => arr.forEach(e=>months.add(monthKey(e.date))));
+  return Array.from(months).sort().reverse();
+}
+function monthLabelFor(m){
+  const [y,mo] = m.split('-').map(Number);
+  return new Date(y, mo-1, 1).toLocaleDateString(undefined, { month:'long', year:'numeric' });
+}
+
+/* ---------- Monthly summary stat per goal ---------- */
+function summaryStatFor(goal, m){
+  const win = effectiveWindowFor(goal, m);
+  if(!win) return 'not started yet';
+  const effDays = win.days;
+  const effWeeks = Math.max(Math.ceil(effDays/7), 1);
+  if(goal.type==='checkbox'){
+    const log = state.checkLogs[goal.id] || {};
+    if(goal.cadence==='daily'){
+      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]).length;
+      return `${count} / ${effDays} days`;
+    }
+    if(goal.cadence==='weekly'){
+      const loggedDays = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]);
+      const weeksHit = new Set(loggedDays.map(d=>weekDates(d)[0])).size;
+      return `${weeksHit} / ${effWeeks} weeks`;
+    }
+    return log[m] ? 'Done ✓' : 'Not yet';
+  }
+  if(goal.type==='tally'){
+    const count = (state.tallyLogs[goal.id]||[]).filter(d=>monthKey(d)===m).length;
+    return `${count} logged this month`;
+  }
+  if(goal.type==='amount'){
+    const sum = (state.amountLogs[goal.id]||[]).filter(e=>monthKey(e.date)===m).reduce((a,e)=>a+e.amount,0);
+    const allTime = amountSumAllTime(goal.id);
+    return goal.resetCadence==='never' ? `${allTime} ${goal.unit||''} all-time` : `${sum} ${goal.unit||''} this month`;
+  }
+  if(goal.type==='stages'){
+    const hist = state.stageHistory[goal.id]||{};
+    const idx = hist[m] !== undefined ? hist[m] : (m===thisMonth() ? (state.stageState[goal.id]||0) : null);
+    return idx===null ? '—' : goal.stages[idx];
+  }
+  if(goal.type==='list'){
+    const items = state.listItems[goal.id]||[];
+    const thisMonthCount = items.filter(i=>monthKey(i.date)===m).length;
+    return `${thisMonthCount} added this month`;
+  }
+  return '—';
+}
+
+/* ---------- Main render ---------- */
+function render(){
+  document.getElementById('dateLabel').textContent = new Date().toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+  renderArc();
+
+  const app = document.getElementById('app');
+  app.className = '';
+
+  const categoryCards = state.categories.map(cat => {
+    const goals = state.goals.filter(g=>g.categoryId===cat.id);
+    return `
+    <div class="card">
+      <div class="card-head">
+        <span class="dot dot-pick" style="background:${cat.color}" onclick="toggleColorPicker('${cat.id}')"></span>
+        ${ui.editingCategory===cat.id ? `
+          <input type="text" id="catEdit_${cat.id}" class="cat-name-input editing" value="${cat.name.replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter'){ renameCategory('${cat.id}', this.value); }" />
+          <button class="icon-btn" onclick="renameCategory('${cat.id}', document.getElementById('catEdit_${cat.id}').value)" title="save name">Save</button>
+          <button class="icon-btn" onclick="cancelEditCategory()" title="cancel">Cancel</button>
+        ` : `
+          <h2>${cat.name}</h2>
+          <button class="icon-btn" onclick="startEditCategory('${cat.id}')" title="rename category">✎</button>
+        `}
+        <button class="icon-btn ${ui.confirmDeleteCategory===cat.id?'confirming':''}" onclick="removeCategory('${cat.id}')" title="delete category">${ui.confirmDeleteCategory===cat.id ? 'Confirm?' : '✕'}</button>
+      </div>
+      ${ui.colorPickerFor===cat.id ? `
+        <div class="swatch-row">
+          ${PALETTE.map(c => `<div class="swatch ${c===cat.color?'on':''}" style="background:${c};" onclick="setCategoryColor('${cat.id}', '${c}')"></div>`).join('')}
+        </div>` : ''}
+      ${goals.length===0 ? '<div class="empty-state">No goals yet in this category.</div>' : goals.map(g=>renderGoalRow(g, cat.color)).join('')}
+      ${ui.addingGoalFor===cat.id ? renderGoalForm(cat.id) : `<div class="add-row"><button class="util-btn outline" style="width:100%; height:36px;" onclick="startAddGoal('${cat.id}')">+ Add goal</button></div>`}
+    </div>`;
+  }).join('');
+
+  const months = collectMonths();
+  const scorecardHtml = state.categories.length===0 ? '' : `
+    <div class="card full">
+      <div class="card-head"><span class="dot" style="background:#232A4D"></span><h2>Scorecard</h2><span class="sub">monthly trend</span></div>
+      ${months.map(m => {
+        const g = gradeForMonth(m);
+        return `
+        <div class="score-month">
+          <div class="score-month-head">
+            <div class="score-month-name">${monthLabelFor(m)}</div>
+            ${g.isCurrentMonth ? `<span class="score-live-tag">month to date</span>` : ''}
+            ${g.overallPct!==null ? `<div class="score-badge" style="background:${gradeColor(g.overallPct)};">${gradeLetter(g.overallPct)}</div>` : `<div class="score-badge" style="background:rgba(42,38,32,0.25);">—</div>`}
+          </div>
+          <div class="score-cats">
+            ${state.categories.map(cat => {
+              const pct = g.categories[cat.id];
+              if(pct===null || pct===undefined) return `<span class="score-chip na">${cat.name} —</span>`;
+              return `<span class="score-chip" style="background:${gradeColor(pct)};">${cat.name} ${gradeLetter(pct)}</span>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+      <div class="meta" style="margin-top:12px;">Grades are based on progress against each goal's expected pace for the month. List-type goals aren't graded — they're for open-ended tracking only.</div>
+    </div>`;
+
+  const summaryHtml = state.categories.length===0 ? '' : `
+    <div class="card full">
+      <div class="card-head"><span class="dot" style="background:#232A4D"></span><h2>${new Date().toLocaleDateString(undefined,{month:'long'})} so far</h2><span class="sub">day ${new Date().getDate()}</span></div>
+      ${state.categories.map(cat => {
+        const goals = state.goals.filter(g=>g.categoryId===cat.id);
+        if(goals.length===0) return '';
+        return `<div class="summary-section-label">${cat.name}</div>` +
+          goals.map(g => `<div class="summary-stat"><span>${g.name}</span><span class="mono">${summaryStatFor(g, thisMonth())}</span></div>`).join('');
+      }).join('')}
+      <div class="backup-bar">
+        <button class="util-btn" style="background:#C1623D;" onclick="exportBackup()">Export backup</button>
+        <button class="util-btn outline" onclick="document.getElementById('importFile').click();">Import backup</button>
+      </div>
+    </div>`;
+
+  app.innerHTML = `
+    ${ui.toast ? `<div class="toast">${ui.toast}</div>` : ''}
+    <div class="card new-cat-card">
+      <input type="text" id="newCatInput" placeholder="New category name (e.g. Health, Faith, Work)…" />
+      <button class="util-btn" style="background:#232A4D;" onclick="addCategory(document.getElementById('newCatInput').value); document.getElementById('newCatInput').value='';">Add Category</button>
+    </div>
+    <div class="grid" style="margin-top:16px;">
+      ${categoryCards}
+      ${state.categories.length===0 ? `
+      <div class="card full guide-card">
+        <h3>Welcome to First Light</h3>
+        <p class="lead">This is your own private tracker — nothing is sent anywhere, everything you add lives only in this browser. Here's how to set it up:</p>
+
+        <div class="guide-step">
+          <div class="num">1</div>
+          <div class="txt"><b>Add a category</b> above — a broad area of your life you want to track, like "Health," "Faith," "Work," or "Family." Each one gets its own color.</div>
+        </div>
+        <div class="guide-step">
+          <div class="num">2</div>
+          <div class="txt"><b>Add goals inside each category</b> — tap "+ Add goal," give it a name, and choose the tracking type that fits best (see below).</div>
+        </div>
+        <div class="guide-step">
+          <div class="num">3</div>
+          <div class="txt"><b>Check in daily.</b> Your progress builds into streaks, a monthly summary, and a monthly grade for each category — so you can see your trends over time, not just today.</div>
+        </div>
+
+        <div class="guide-types">
+          <div class="guide-type-row"><span class="tname">Checkbox</span><span class="tdesc">Simple done / not done, daily, weekly, or monthly. Good for habits like "read scripture" or "call a parent."</span></div>
+          <div class="guide-type-row"><span class="tname">Tally</span><span class="tdesc">Count how many times you do something toward a target, like "gym, 4x a week." Tap +1 each time.</span></div>
+          <div class="guide-type-row"><span class="tname">Amount</span><span class="tdesc">Log a running number toward a target, like saving $500 a month or reading 200 pages. Resets on whatever schedule makes sense, or never.</span></div>
+          <div class="guide-type-row"><span class="tname">Stages</span><span class="tdesc">Move through your own custom steps over time, like "Start → Study → Practice → Exam → Complete" for a certification.</span></div>
+          <div class="guide-type-row"><span class="tname">List</span><span class="tdesc">An open-ended checklist or log with no fixed target, like recipes you want to try or people you've reached out to.</span></div>
+        </div>
+
+        <div class="guide-note">Tip: on iPhone, open this page in Safari or Chrome, tap Share, then "Add to Home Screen" — it'll behave like its own app. Use "Export backup" occasionally to save a copy of your data outside the browser.</div>
+      </div>
+      ` : ''}
+      ${summaryHtml}
+      ${scorecardHtml}
+    </div>
+    <div class="footer-note">first light</div>
+  `;
+}
+
+loadState();
+</script>
+</body>
+</html>
