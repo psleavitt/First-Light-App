@@ -27,7 +27,6 @@
   .band h1{ font-family:'Fraunces', serif; font-weight:600; font-size:26px; margin:0 0 4px; letter-spacing:0.2px; }
   .band .desc{ font-size:13px; opacity:0.75; margin:0; max-width:480px; line-height:1.4; }
   .band .date{ font-family:'IBM Plex Mono', monospace; font-size:12px; opacity:0.7; text-align:right; white-space:nowrap; }
-  .sync-dot{ width:10px; height:10px; border-radius:50%; display:inline-block; background:#8b8b8b; cursor:pointer; box-shadow:0 0 0 2px rgba(239,227,204,0.2); flex-shrink:0; }
 
   .arc-wrap{ margin-top:18px; display:flex; flex-direction:column; align-items:center; }
   .arc-label{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; opacity:0.65; margin-top:8px; }
@@ -146,10 +145,7 @@
       <h1>First Light</h1>
       <p class="desc">A daily dashboard to track habits, goals, and progress over time.</p>
     </div>
-    <div style="display:flex; align-items:center; gap:8px;">
-      <span class="sync-dot" id="syncDot" onclick="toggleSyncSettings()" title="Sync status"></span>
-      <div class="date mono" id="dateLabel"></div>
-    </div>
+    <div class="date mono" id="dateLabel"></div>
   </div>
   <div class="arc-wrap" id="arcWrap"></div>
 </div>
@@ -213,187 +209,7 @@ function loadState(){
 function saveState(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch(e){ console.error('Could not write to local storage', e); }
-  if(getSyncCode()){
-    try{ localStorage.setItem(DIRTY_KEY, '1'); } catch(e){}
-    queueSync();
-  }
 }
-
-/* ---------- Cloud sync (Supabase) ---------- */
-const SUPABASE_URL = 'https://ctxnyfgdiugzhskumqpm.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0eG55ZmdkaXVnemhza3VtcXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODUxNzgsImV4cCI6MjA5ODc2MTE3OH0.waXx4gHFKwRJWNloGRhIpe7TH5UVn1N_jPLgaAn2oEY';
-const SYNC_TABLE = 'first_light';
-const CODE_KEY = 'first-light-sync-code';
-const DIRTY_KEY = 'first-light-sync-dirty';
-let syncStatus = 'off';
-let syncTimer = null;
-let lastRemoteStamp = null;
-
-function getSyncCode(){ try{ return localStorage.getItem(CODE_KEY) || ''; } catch(e){ return ''; } }
-function sbHeaders(){ return { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' }; }
-function setSyncStatus(s){ syncStatus = s; updateSyncDot(); }
-function updateSyncDot(){
-  const el = document.getElementById('syncDot');
-  if(!el) return;
-  const map = {
-    off:    ['#8b8b8b', 'Sync off — tap to set up'],
-    pending:['#C99A3B', 'Saving…'],
-    syncing:['#C99A3B', 'Syncing…'],
-    synced: ['#7FA37C', 'Synced'],
-    error:  ['#A8444B', 'Sync error — will retry']
-  };
-  const [color, title] = map[syncStatus] || map.off;
-  el.style.background = color;
-  el.title = title;
-}
-async function pullRemote(code){
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${SYNC_TABLE}?code=eq.${encodeURIComponent(code)}&select=data,updated_at`, { headers: sbHeaders() });
-  if(!r.ok) throw new Error('pull failed: ' + r.status);
-  const rows = await r.json();
-  return rows.length ? rows[0] : null;
-}
-async function pushRemote(){
-  const code = getSyncCode();
-  if(!code) return;
-  setSyncStatus('syncing');
-  try{
-    const stamp = new Date().toISOString();
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${SYNC_TABLE}?on_conflict=code`, {
-      method:'POST',
-      headers: Object.assign(sbHeaders(), { 'Prefer':'resolution=merge-duplicates' }),
-      body: JSON.stringify([{ code, data: state, updated_at: stamp }])
-    });
-    if(!r.ok) throw new Error('push failed: ' + r.status);
-    lastRemoteStamp = stamp;
-    try{ localStorage.removeItem(DIRTY_KEY); } catch(e){}
-    setSyncStatus('synced');
-  } catch(e){
-    console.error('Sync push error', e);
-    setSyncStatus('error');
-  }
-}
-function queueSync(){
-  setSyncStatus('pending');
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushRemote, 400);
-}
-function adoptRemote(row){
-  state = Object.assign(defaultState(), row.data);
-  if(!state.meta) state.meta = {};
-  try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    localStorage.removeItem(DIRTY_KEY);
-  } catch(e){}
-  lastRemoteStamp = row.updated_at || lastRemoteStamp;
-  setSyncStatus('synced');
-}
-async function initialSync(){
-  const code = getSyncCode();
-  if(!code){ setSyncStatus('off'); return; }
-  setSyncStatus('syncing');
-  try{
-    const row = await pullRemote(code);
-    const dirty = localStorage.getItem(DIRTY_KEY);
-    if(dirty){ await pushRemote(); }
-    else if(row){ adoptRemote(row); render(); }
-    else { await pushRemote(); }
-  } catch(e){
-    console.error('Initial sync error', e);
-    setSyncStatus('error');
-  }
-}
-async function pollRemote(){
-  const code = getSyncCode();
-  if(!code) return;
-  if(localStorage.getItem(DIRTY_KEY)) return; // don't clobber unsent local changes
-  try{
-    const row = await pullRemote(code);
-    if(row && row.updated_at && (!lastRemoteStamp || row.updated_at > lastRemoteStamp)){
-      adoptRemote(row);
-      render();
-    }
-  } catch(e){ /* quiet — poll will retry */ }
-}
-function toggleSyncSettings(){ ui.syncSettingsOpen = !ui.syncSettingsOpen; render(); }
-async function enableSync(code){
-  code = (code||'').trim();
-  if(code.length < 6){ showToast('Please use a longer code — at least 6 characters, ideally a few random words.'); return; }
-  setSyncStatus('syncing');
-  try{
-    const row = await pullRemote(code);
-    if(row && state.goals.length){
-      ui.pendingJoin = { code, row };
-      render(); updateSyncDot();
-      return;
-    }
-    try{ localStorage.setItem(CODE_KEY, code); } catch(e){}
-    if(row){ adoptRemote(row); showToast('Joined the existing dashboard for this code.'); }
-    else { await pushRemote(); showToast('Sync enabled.'); }
-    ui.syncSettingsOpen = false;
-    render();
-  } catch(e){
-    console.error(e);
-    setSyncStatus(getSyncCode() ? 'error' : 'off');
-    showToast('Could not reach the sync server — check your connection and try again.');
-  }
-}
-function confirmJoinRemote(){
-  const p = ui.pendingJoin;
-  try{ localStorage.setItem(CODE_KEY, p.code); } catch(e){}
-  adoptRemote(p.row);
-  ui.pendingJoin = null; ui.syncSettingsOpen = false;
-  render();
-  showToast('Loaded the dashboard for that sync code.');
-}
-function keepLocalOverRemote(){
-  const p = ui.pendingJoin;
-  try{ localStorage.setItem(CODE_KEY, p.code); localStorage.setItem(DIRTY_KEY,'1'); } catch(e){}
-  ui.pendingJoin = null; ui.syncSettingsOpen = false;
-  pushRemote();
-  render();
-  showToast('Sync enabled — this device\'s data replaced the cloud copy.');
-}
-function cancelJoin(){ ui.pendingJoin = null; setSyncStatus('off'); render(); }
-function turnOffSync(){
-  try{ localStorage.removeItem(CODE_KEY); localStorage.removeItem(DIRTY_KEY); } catch(e){}
-  setSyncStatus('off');
-  ui.syncSettingsOpen = false;
-  render();
-  showToast('Sync turned off — your data stays on this device.');
-}
-setInterval(pollRemote, 60000);
-
-// Flush any pending change immediately when the tab is closed or backgrounded,
-// rather than waiting on the debounce timer — this closes the small window
-// where a quick check-and-leave could get overwritten by a later pull.
-// When the app is merely backgrounded (switching apps, screen lock, a
-// notification), the page is still alive — so do a real, confirmed push.
-// Only on true pagehide (navigating away / being closed) do we fall back
-// to a best-effort send we can't confirm — and critically, we do NOT
-// mark it as synced in that case, so a failed send safely retries next
-// time the app opens instead of silently losing the change.
-function flushOnBackground(){
-  if(document.hidden){ clearTimeout(syncTimer); pushRemote(); }
-}
-function flushOnUnload(){
-  const code = getSyncCode();
-  if(!code) return;
-  try{ if(!localStorage.getItem(DIRTY_KEY)) return; } catch(e){ return; }
-  clearTimeout(syncTimer);
-  try{
-    fetch(`${SUPABASE_URL}/rest/v1/${SYNC_TABLE}?on_conflict=code`, {
-      method:'POST',
-      headers: Object.assign(sbHeaders(), { 'Prefer':'resolution=merge-duplicates' }),
-      body: JSON.stringify([{ code, data: state, updated_at: new Date().toISOString() }]),
-      keepalive: true // lets this small request attempt to finish even as the tab closes
-    });
-    // Deliberately NOT clearing the dirty flag here — we can't confirm this
-    // request actually completed, so the next app open will safely re-push
-    // the current data via the normal, confirmed path.
-  } catch(e){ /* best effort — will retry via dirty flag on next open */ }
-}
-document.addEventListener('visibilitychange', flushOnBackground);
-window.addEventListener('pagehide', flushOnUnload);
 
 /* ---------- Categories ---------- */
 function addCategory(name){
@@ -653,7 +469,6 @@ function daysSince(dateStr){
 }
 function shouldNudgeBackup(){
   if(!state.goals.length) return false;
-  if(getSyncCode()) return false; // cloud sync is on — data is already backed up
   const last = state.meta.lastBackupAt || state.meta.firstUseAt;
   if(daysSince(last) < 30) return false;
   if(state.meta.nudgeDismissedAt && daysSince(state.meta.nudgeDismissedAt) < 7) return false;
@@ -1144,35 +959,11 @@ function render(){
       <div class="backup-bar">
         <button class="util-btn" style="background:#C1623D;" onclick="exportBackup()">Export backup</button>
         <button class="util-btn outline" onclick="document.getElementById('importFile').click();">Import backup</button>
-        <button class="util-btn outline" onclick="toggleSyncSettings()">Sync settings</button>
       </div>
     </div>`;
 
   app.innerHTML = `
     ${ui.toast ? `<div class="toast">${ui.toast}</div>` : ''}
-    ${ui.pendingJoin ? `<div class="toast">A dashboard already exists for that sync code. Load the cloud copy here (replaces this device's data), or overwrite the cloud copy with this device's data?
-      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px; flex-wrap:wrap;">
-        <button class="util-btn" style="background:#6E8B6B;" onclick="confirmJoinRemote()">Load cloud copy</button>
-        <button class="util-btn" style="background:#A8444B;" onclick="keepLocalOverRemote()">Keep this device's data</button>
-        <button class="util-btn outline" style="color:#EFE3CC; border-color:rgba(239,227,204,0.4);" onclick="cancelJoin()">Cancel</button>
-      </div></div>` : ''}
-    ${ui.syncSettingsOpen ? `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-head"><span class="dot" style="background:#232A4D"></span><h2>Cloud Sync</h2><span class="sub">${getSyncCode() ? 'on' : 'off'}</span></div>
-      ${getSyncCode() ? `
-        <div class="row" style="border-top:none;"><div class="label">Sync code</div><div class="meta">${esc(getSyncCode())}</div></div>
-        <div class="type-hint" style="margin:8px 0;">Every device using this code shares this dashboard. Enter the same code on another device to sync it, and keep the code private — anyone who knows it can view and change this data.</div>
-        <div class="backup-bar">
-          <button class="util-btn outline" onclick="turnOffSync()">Turn off sync</button>
-        </div>
-      ` : `
-        <div class="type-hint" style="margin-bottom:10px;">Pick a sync code to back your dashboard up to the cloud and use it across devices. Use a long, hard-to-guess phrase — anyone who knows the code can view and change the data tied to it.</div>
-        <div class="add-row">
-          <input type="text" id="syncCodeInput" placeholder="e.g. copper-falcon-sunrise" />
-          <button class="util-btn" style="background:#232A4D;" onclick="enableSync(document.getElementById('syncCodeInput').value)">Enable sync</button>
-        </div>
-      `}
-    </div>` : ''}
     ${shouldNudgeBackup() ? `<div class="toast">It's been a while since your data was backed up. Your progress lives only in this browser — a backup file keeps it safe.
       <div style="display:flex; gap:8px; justify-content:center; margin-top:8px;">
         <button class="util-btn" style="background:#6E8B6B;" onclick="exportBackup()">Export backup</button>
@@ -1223,11 +1014,9 @@ function render(){
     </div>
     <div class="footer-note">first light</div>
   `;
-  updateSyncDot();
 }
 
 loadState();
-initialSync();
 
 // Offline support: register the service worker (requires sw.js hosted
 // alongside this file; silently skipped where unsupported).
