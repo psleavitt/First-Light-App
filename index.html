@@ -213,6 +213,18 @@ function loadState(){
   } catch(e){ console.error('Could not read local storage', e); state = defaultState(); }
   if(!state.meta) state.meta = {};
   if(!state.meta.firstUseAt){ state.meta.firstUseAt = todayStr(); saveState(); }
+  // Self-heal: a form bug could previously save a tally goal with an invalid
+  // cadence (e.g. 'daily', left over from switching goal type without
+  // re-selecting "how often"). That silently broke both the weekly reset
+  // and the scorecard grading for that goal. Fix it in place.
+  let healed = false;
+  state.goals.forEach(g => {
+    if(g.type==='tally' && !['weekly','monthly','yearly'].includes(g.cadence)){
+      g.cadence = 'weekly';
+      healed = true;
+    }
+  });
+  if(healed) saveState();
   render();
 }
 function saveState(){
@@ -536,7 +548,18 @@ function saveEditedGoal(){
   ui.editingGoal = null;
   saveState(); render();
 }
-function updateDraft(field, value){ ui.draft[field] = value; render(); }
+function updateDraft(field, value){
+  ui.draft[field] = value;
+  if(field==='type'){
+    // Each type has its own valid cadence options — switching type must reset
+    // cadence to a valid one, or a stale value from the previous type can
+    // silently persist even though the dropdown visually shows something else.
+    if(value==='checkbox') ui.draft.cadence = 'daily';
+    else if(value==='tally') ui.draft.cadence = 'weekly';
+    else if(value==='amount') ui.draft.resetCadence = 'weekly';
+  }
+  render();
+}
 function createGoal(categoryId){
   const d = ui.draft;
   if(!d.name || !d.name.trim()){ showToast('Please give the goal a name.'); return; }
@@ -620,10 +643,11 @@ function undoTally(goalId){
 }
 function tallyCountInPeriod(goalId, cadence, refDate=todayStr()){
   const arr = state.tallyLogs[goalId] || [];
-  if(cadence==='weekly'){ const wk = weekDates(refDate); return arr.filter(d=>wk.includes(d)).length; }
   if(cadence==='monthly'){ const m = monthKey(refDate); return arr.filter(d=>monthKey(d)===m).length; }
   if(cadence==='yearly'){ const y = refDate.slice(0,4); return arr.filter(d=>d.slice(0,4)===y).length; }
-  return arr.length;
+  // 'weekly' and any unrecognized/legacy value default to weekly — safer than
+  // silently falling through to an all-time total that never resets.
+  const wk = weekDates(refDate); return arr.filter(d=>wk.includes(d)).length;
 }
 
 /* ---------- Amount type ---------- */
@@ -1006,12 +1030,13 @@ function goalPctForMonth(goal, m){
     const arr = state.tallyLogs[goal.id] || [];
     const countThisMonth = arr.filter(d=>monthKey(d)===m).length;
     if(goal.cadence==='monthly') return clampPct(countThisMonth/Math.max(goal.target*proration,1)*100);
-    if(goal.cadence==='weekly') return clampPct(countThisMonth/(goal.target*effWeeks)*100);
     if(goal.cadence==='yearly'){
       const y = m.slice(0,4);
       const countThisYear = arr.filter(d=>d.slice(0,4)===y && d<=m+'-31').length;
       return clampPct(countThisYear/(goal.target*monthNum/12)*100);
     }
+    // 'weekly' and any unrecognized/legacy value default to weekly scoring
+    return clampPct(countThisMonth/(goal.target*effWeeks)*100);
   }
   if(goal.type==='amount'){
     if(goal.resetCadence==='never') return null;
