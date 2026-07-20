@@ -331,8 +331,8 @@ async function initialSync(){
     // the fetched row is stale. Local data wins; push it instead.
     if(dirty){ await pushRemote(); }
     else if(pushSeq !== seqBefore){ setSyncStatus('synced'); }
-    else if(row && row.rev > getConfirmedRev()){ adoptRemote(row); render(); }
-    else if(row){ setConfirmedRev(row.rev); setSyncStatus('synced'); } // already up to date
+    else if(row && row.rev !== getConfirmedRev()){ adoptRemote(row); render(); }
+    else if(row){ setSyncStatus('synced'); } // already up to date
     else { await pushRemote(); }
   } catch(e){
     console.error('Initial sync error', e);
@@ -350,7 +350,7 @@ async function pollRemote(){
     // fetching, this row is stale — skip it.
     if(localStorage.getItem(DIRTY_KEY)) return;
     if(pushSeq !== seqBefore) return;
-    if(row && row.rev > getConfirmedRev()){
+    if(row && row.rev !== getConfirmedRev()){
       adoptRemote(row);
       render();
     }
@@ -397,7 +397,7 @@ function keepLocalOverRemote(){
 }
 function cancelJoin(){ ui.pendingJoin = null; setSyncStatus('off'); render(); }
 function turnOffSync(){
-  try{ localStorage.removeItem(CODE_KEY); localStorage.removeItem(DIRTY_KEY); } catch(e){}
+  try{ localStorage.removeItem(CODE_KEY); localStorage.removeItem(DIRTY_KEY); localStorage.removeItem(REV_KEY); } catch(e){}
   setSyncStatus('off');
   ui.syncSettingsOpen = false;
   render();
@@ -633,9 +633,9 @@ function undoTally(goalId){
   if(!arr.length || !goal) return;
   // only undo entries within the current period
   let inPeriod;
-  if(goal.cadence==='weekly'){ const wk = weekDates(todayStr()); inPeriod = d => wk.includes(d); }
-  else if(goal.cadence==='monthly'){ inPeriod = d => monthKey(d)===thisMonth(); }
-  else { const y = todayStr().slice(0,4); inPeriod = d => d.slice(0,4)===y; }
+  if(goal.cadence==='monthly'){ inPeriod = d => monthKey(d)===thisMonth(); }
+  else if(goal.cadence==='yearly'){ const y = todayStr().slice(0,4); inPeriod = d => d.slice(0,4)===y; }
+  else { const wk = weekDates(todayStr()); inPeriod = d => wk.includes(d); } // weekly + unrecognized default
   for(let i=arr.length-1; i>=0; i--){
     if(inPeriod(arr[i])){ arr.splice(i,1); saveState(); render(); return; }
   }
@@ -928,15 +928,15 @@ function renderGoalForm(categoryId){
             <option value="yearly" ${d.cadence==='yearly'?'selected':''}>Per year</option>
           </select></div>
         <div><label>Target count</label>
-          <input type="number" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
+          <input type="number" id="goalTargetInput" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
       </div>
       <div class="type-hint">Tap "+1" each time you do it — like going to the gym 4x a week.</div>`;
   } else if(d.type==='amount'){
     fields = `<div class="form-row">
         <div><label>Target amount</label>
-          <input type="number" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
+          <input type="number" id="goalAmountTargetInput" value="${d.target}" onchange="updateDraft('target', this.value)" /></div>
         <div><label>Unit (optional)</label>
-          <input type="text" placeholder="e.g. $, pages, miles" value="${esc(d.unit||'')}" onchange="updateDraft('unit', this.value)" /></div>
+          <input type="text" id="goalUnitInput" placeholder="e.g. $, pages, miles" value="${esc(d.unit||'')}" onchange="updateDraft('unit', this.value)" /></div>
       </div>
       <div><label>Resets</label>
         <select onchange="updateDraft('resetCadence', this.value)">
@@ -949,14 +949,14 @@ function renderGoalForm(categoryId){
       <div class="type-hint">Log an amount each time — like saving money or reading pages, toward a target.</div>`;
   } else if(d.type==='stages'){
     fields = `<div><label>Stages (comma-separated, in order)</label>
-        <input type="text" placeholder="e.g. Start, Study, Practice, Exam, Complete" value="${esc(d.stagesText||'')}" onchange="updateDraft('stagesText', this.value)" /></div>
+        <input type="text" id="goalStagesInput" placeholder="e.g. Start, Study, Practice, Exam, Complete" value="${esc(d.stagesText||'')}" onchange="updateDraft('stagesText', this.value)" /></div>
       <div class="type-hint">Move through custom stages over time — like studying for a certification.</div>`;
   } else if(d.type==='list'){
     fields = `<div class="type-hint">An open-ended checklist or log — add items whenever, check them off if helpful. Not included in monthly grading.</div>`;
   }
   return `
     <div class="goal-form">
-      <div><label>Goal name</label><input type="text" placeholder="e.g. Read scriptures" value="${esc(d.name||'')}" onchange="updateDraft('name', this.value)" /></div>
+      <div><label>Goal name</label><input type="text" id="goalNameInput" placeholder="e.g. Read scriptures" value="${esc(d.name||'')}" onchange="updateDraft('name', this.value)" /></div>
       ${editing ? `<div class="type-hint">Type: ${d.type} (type can't be changed after creation)</div>` : `<div><label>Type</label>
         <select onchange="updateDraft('type', this.value)">
           <option value="checkbox" ${d.type==='checkbox'?'selected':''}>Checkbox (done / not done)</option>
@@ -1088,6 +1088,7 @@ function collectMonths(){
   Object.values(state.checkLogs).forEach(log => Object.keys(log).forEach(k => { if(k.length===10) months.add(monthKey(k)); else if(k.length===7) months.add(k); }));
   Object.values(state.tallyLogs).forEach(arr => arr.forEach(d=>months.add(monthKey(d))));
   Object.values(state.amountLogs).forEach(arr => arr.forEach(e=>months.add(monthKey(e.date))));
+  Object.values(state.stageHistory).forEach(hist => Object.keys(hist).forEach(m=>months.add(m)));
   return Array.from(months).sort().reverse();
 }
 function monthLabelFor(m){
@@ -1143,6 +1144,16 @@ function render(){
 
   const app = document.getElementById('app');
   app.className = '';
+
+  // A full re-render can fire while the user is mid-typing (e.g. a toast
+  // auto-dismissing). Preserve the focused input's value, focus, and cursor
+  // so their half-typed text isn't wiped.
+  let restoreInput = null;
+  const active = document.activeElement;
+  if(active && active.id && app.contains(active) && (active.tagName==='INPUT' || active.tagName==='SELECT')){
+    restoreInput = { id: active.id, value: active.value };
+    try{ restoreInput.start = active.selectionStart; restoreInput.end = active.selectionEnd; } catch(e){}
+  }
 
   const categoryCards = state.categories.map(cat => {
     const goals = state.goals.filter(g=>g.categoryId===cat.id);
@@ -1256,30 +1267,44 @@ function render(){
       ${state.categories.length===0 ? `
       <div class="card full guide-card">
         <h3>Welcome to First Light</h3>
-        <p class="lead">This is your own private tracker — nothing is sent anywhere, everything you add lives only in this browser. Here's how to set it up:</p>
+        <p class="lead">A daily dashboard for tracking habits, goals, and progress over time. Everything saves to this device automatically as you go — and can optionally sync to the cloud so it's backed up and available on your other devices.</p>
 
         <div class="guide-step">
           <div class="num">1</div>
-          <div class="txt"><b>Add a category</b> above — a broad area of your life you want to track, like "Health," "Faith," "Work," or "Family." Each one gets its own color.</div>
+          <div class="txt"><b>Set up sync (recommended — do this first).</b> Pick a sync code: a long, hard-to-guess phrase like three random words. It backs up your dashboard and lets you open it anywhere by entering the same code. <b>Already use First Light on another device?</b> Enter your existing code below and your dashboard will load right here.
+            ${getSyncCode() ? `
+            <div class="type-hint" style="margin-top:8px;">✓ Sync is on — code: ${esc(getSyncCode())}</div>
+            ` : `
+            <div class="add-row" style="margin-top:10px;">
+              <input type="text" id="guideSyncInput" placeholder="e.g. copper-falcon-sunrise" />
+              <button class="util-btn" style="background:#232A4D;" onclick="enableSync(document.getElementById('guideSyncInput').value)">Enable sync</button>
+            </div>
+            <div class="type-hint" style="margin-top:6px;">Treat the code like a password — anyone who knows it can view and change that dashboard. Prefer to keep everything on this device only? Skip this step; you can turn sync on later by tapping the dot in the top corner.</div>
+            `}
+          </div>
         </div>
         <div class="guide-step">
           <div class="num">2</div>
-          <div class="txt"><b>Add goals inside each category</b> — tap "+ Add goal," give it a name, and choose the tracking type that fits best (see below).</div>
+          <div class="txt"><b>Add a category</b> using the box above — a broad area of life you want to track, like "Faith," "Health," "Work," or "Family." Each gets its own color; tap the color dot anytime to change it, or ✎ to rename.</div>
         </div>
         <div class="guide-step">
           <div class="num">3</div>
-          <div class="txt"><b>Check in daily.</b> Your progress builds into streaks, a monthly summary, and a monthly grade for each category — so you can see your trends over time, not just today.</div>
+          <div class="txt"><b>Add goals inside each category</b> with "+ Add goal," choosing the tracking style that fits (see below). Tap ⋯ on any goal later to edit, reorder, or delete it.</div>
+        </div>
+        <div class="guide-step">
+          <div class="num">4</div>
+          <div class="txt"><b>Check in daily.</b> The arc at the top fills as you complete each day's goals. Everything rolls up into a monthly summary and a month-by-month scorecard with letter grades, so you can watch your trends over time — not just today.</div>
         </div>
 
         <div class="guide-types">
-          <div class="guide-type-row"><span class="tname">Checkbox</span><span class="tdesc">Simple done / not done, daily, weekly, or monthly. Good for habits like "read scripture" or "call a parent."</span></div>
-          <div class="guide-type-row"><span class="tname">Tally</span><span class="tdesc">Count how many times you do something toward a target, like "gym, 4x a week." Tap +1 each time.</span></div>
-          <div class="guide-type-row"><span class="tname">Amount</span><span class="tdesc">Log a running number toward a target, like saving $500 a month or reading 200 pages. Resets on whatever schedule makes sense, or never.</span></div>
-          <div class="guide-type-row"><span class="tname">Stages</span><span class="tdesc">Move through your own custom steps over time, like "Start → Study → Practice → Exam → Complete" for a certification.</span></div>
-          <div class="guide-type-row"><span class="tname">List</span><span class="tdesc">An open-ended checklist or log with no fixed target, like recipes you want to try or people you've reached out to.</span></div>
+          <div class="guide-type-row"><span class="tname">Checkbox</span><span class="tdesc">Done / not done — daily, weekly, or monthly. Builds a streak. Good for habits like "read scripture" or "call a parent."</span></div>
+          <div class="guide-type-row"><span class="tname">Tally</span><span class="tdesc">Count occurrences toward a target, like "gym, 4x a week." Tap +1 each time; ↺ undoes the latest.</span></div>
+          <div class="guide-type-row"><span class="tname">Amount</span><span class="tdesc">Log numbers toward a target — save $500 a month, read 200 pages. Resets on the schedule you choose, or never.</span></div>
+          <div class="guide-type-row"><span class="tname">Stages</span><span class="tdesc">Move through custom steps you define, like "Start → Study → Practice → Exam → Complete" for a certification.</span></div>
+          <div class="guide-type-row"><span class="tname">List</span><span class="tdesc">An open-ended checklist or log with no fixed target — recipes to try, people to reach out to. Not graded.</span></div>
         </div>
 
-        <div class="guide-note">Tip: on iPhone, open this page in Safari or Chrome, tap Share, then "Add to Home Screen" — it'll behave like its own app. Use "Export backup" occasionally to save a copy of your data outside the browser.</div>
+        <div class="guide-note">The dot in the top corner shows sync status: gray = off, amber = saving, green = synced, red = error (it retries on its own). Tip: tap Share → "Add to Home Screen" in Safari or Chrome and First Light will open full-screen like its own app. Even with sync on, the occasional "Export backup" gives you a file copy that's entirely yours.</div>
       </div>
       ` : ''}
       ${summaryHtml}
@@ -1287,6 +1312,14 @@ function render(){
     </div>
     <div class="footer-note">first light</div>
   `;
+  if(restoreInput){
+    const el = document.getElementById(restoreInput.id);
+    if(el){
+      el.value = restoreInput.value;
+      el.focus();
+      try{ if(restoreInput.start!=null) el.setSelectionRange(restoreInput.start, restoreInput.end); } catch(e){}
+    }
+  }
   updateSyncDot();
 }
 
