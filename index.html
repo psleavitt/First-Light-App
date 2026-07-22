@@ -287,7 +287,15 @@ function updateSyncDot(){
   el.title = title;
 }
 async function pullRemote(code){
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${SYNC_TABLE}?code=eq.${encodeURIComponent(code)}&select=data,rev`, { headers: sbHeaders() });
+  // A cache-busting param plus explicit no-cache headers guarantee this is
+  // always a live read, never a stale response served by the browser or any
+  // proxy in between — which is what caused an old revision to briefly
+  // reappear (see the 2026-07-22 sync log incident).
+  const bust = Date.now() + '-' + Math.random().toString(36).slice(2);
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${SYNC_TABLE}?code=eq.${encodeURIComponent(code)}&select=data,rev&_=${bust}`, {
+    headers: Object.assign(sbHeaders(), { 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' }),
+    cache: 'no-store'
+  });
   if(!r.ok) throw new Error('pull failed: ' + r.status);
   const rows = await r.json();
   return rows.length ? rows[0] : null;
@@ -360,7 +368,7 @@ async function initialSync(){
     // the fetched row is stale. Local data wins; push it instead.
     if(dirty){ logSync('open-push', 'had unsaved local change'); await pushRemote(); }
     else if(pushSeq !== seqBefore){ setSyncStatus('synced'); }
-    else if(row && row.rev !== getConfirmedRev()){ adoptRemote(row); render(); }
+    else if(row && row.rev > getConfirmedRev()){ adoptRemote(row); render(); }
     else if(row){ setSyncStatus('synced'); } // already up to date
     else { logSync('open-push', 'no cloud row yet'); await pushRemote(); }
   } catch(e){
@@ -380,7 +388,7 @@ async function pollRemote(){
     // fetching, this row is stale — skip it.
     if(localStorage.getItem(DIRTY_KEY)) return;
     if(pushSeq !== seqBefore) return;
-    if(row && row.rev !== getConfirmedRev()){
+    if(row && row.rev > getConfirmedRev()){
       adoptRemote(row);
       render();
     }
