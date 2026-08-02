@@ -1045,6 +1045,22 @@ function gradeColor(pct){
 }
 function weeksElapsedIn(m){ return Math.max(Math.ceil(daysConsideredFor(m)/7), 1); }
 
+// The actual set of calendar weeks (identified by each week's Monday) that
+// touch this month between startDay and daysConsidered. A week that starts
+// in the previous month but extends into this one (e.g. Mon Jul 27 – Sun
+// Aug 2) is correctly included — this is what makes weekly goals grade
+// fairly right at a month boundary instead of losing a boundary week.
+function weeksTouchingMonth(m, startDay, daysConsidered){
+  const mondays = [];
+  const seen = new Set();
+  for(let d=startDay; d<=daysConsidered; d++){
+    const dateStr = m + '-' + pad2(d);
+    const monday = weekDates(dateStr)[0];
+    if(!seen.has(monday)){ seen.add(monday); mondays.push(monday); }
+  }
+  return mondays;
+}
+
 // Returns null if the goal didn't exist yet during month m.
 // Otherwise returns { days, startDay } — days = how many days of month m count toward
 // this goal's grading (from its creation date forward), startDay = day-of-month it started.
@@ -1067,7 +1083,8 @@ function goalPctForMonth(goal, m){
   if(!win) return null; // goal didn't exist yet this month
   const daysConsidered = Math.max(daysConsideredFor(m),1);
   const effDays = win.days;
-  const effWeeks = Math.max(Math.ceil(effDays/7), 1);
+  const relevantWeeks = weeksTouchingMonth(m, win.startDay, daysConsidered);
+  const effWeeks = Math.max(relevantWeeks.length, 1);
   const monthNum = parseInt(m.split('-')[1],10);
   const proration = effDays/daysConsidered; // fraction of the month this goal has existed for
 
@@ -1078,9 +1095,11 @@ function goalPctForMonth(goal, m){
       return clampPct(count/effDays*100);
     }
     if(goal.cadence==='weekly'){
-      const loggedDays = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]);
-      const weeksHit = new Set(loggedDays.map(d=>weekDates(d)[0]));
-      return clampPct(weeksHit.size/effWeeks*100);
+      // Check each relevant week's FULL 7-day span for a hit, not just the
+      // days that happen to fall in this month — a checkmark on the tail
+      // end of a boundary week still counts for that week.
+      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d])).length;
+      return clampPct(weeksHit/effWeeks*100);
     }
     return log[m] ? 100 : 0;
   }
@@ -1159,7 +1178,9 @@ function summaryStatFor(goal, m){
   const win = effectiveWindowFor(goal, m);
   if(!win) return 'not started yet';
   const effDays = win.days;
-  const effWeeks = Math.max(Math.ceil(effDays/7), 1);
+  const daysConsidered = Math.max(daysConsideredFor(m),1);
+  const relevantWeeks = weeksTouchingMonth(m, win.startDay, daysConsidered);
+  const effWeeks = Math.max(relevantWeeks.length, 1);
   if(goal.type==='checkbox'){
     const log = state.checkLogs[goal.id] || {};
     if(goal.cadence==='daily'){
@@ -1167,8 +1188,7 @@ function summaryStatFor(goal, m){
       return `${count} / ${effDays} days`;
     }
     if(goal.cadence==='weekly'){
-      const loggedDays = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]);
-      const weeksHit = new Set(loggedDays.map(d=>weekDates(d)[0])).size;
+      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d])).length;
       return `${weeksHit} / ${effWeeks} weeks`;
     }
     return log[m] ? 'Done ✓' : 'Not yet';
