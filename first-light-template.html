@@ -830,7 +830,7 @@ function goalActions(goal){
     return `<button class="icon-btn mini dots" onclick="toggleActionMenu('${goal.id}')" title="actions">⋯</button>`;
   }
   const backdateable = goal.type!=='stages'; // stages are a single current position, not per-day
-  return (backdateable ? `<button class="icon-btn mini" onclick="startBackdate('${goal.id}')" title="log a past day">📅</button>` : '') +
+  return (backdateable ? `<button class="icon-btn mini" onclick="startBackdate('${goal.id}')" title="log a past day">date</button>` : '') +
     `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',-1)" title="move up">▲</button>` +
     `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',1)" title="move down">▼</button>` +
     `<button class="icon-btn mini" onclick="startEditGoal('${goal.id}')" title="edit goal">✎</button>` +
