@@ -198,7 +198,7 @@ function defaultState(){
 }
 
 let state = null;
-let ui = { addingGoalFor:null, draft:{}, toast:null, confirmDeleteCategory:null, confirmDeleteGoal:null };
+let ui = { addingGoalFor:null, draft:{}, toast:null, confirmDeleteCategory:null, confirmDeleteGoal:null, backdateFor:null, backdateDate:null, backdateAmount:'' };
 
 function showToast(msg){
   ui.toast = msg;
@@ -637,19 +637,19 @@ function createGoal(categoryId){
 }
 
 /* ---------- Checkbox type ---------- */
-function toggleCheckbox(goalId, cadence){
+function toggleCheckbox(goalId, cadence, targetDate){
+  const t = targetDate || todayStr();
   if(!state.checkLogs[goalId]) state.checkLogs[goalId] = {};
   const log = state.checkLogs[goalId];
   if(cadence==='monthly'){
-    const m = thisMonth();
+    const m = monthKey(t);
     if(log[m]) delete log[m]; else log[m] = true;
   } else if(cadence==='weekly'){
-    const wk = weekDates(todayStr());
+    const wk = weekDates(t);
     const done = wk.some(d => log[d]);
     if(done){ wk.forEach(d => { delete log[d]; }); }
-    else { log[todayStr()] = true; }
+    else { log[t] = true; }
   } else {
-    const t = todayStr();
     if(log[t]) delete log[t]; else log[t] = true;
   }
   saveState(); render();
@@ -660,6 +660,12 @@ function checkboxDoneThisWeek(goalId){
   return weekDates(todayStr()).some(d => log[d]);
 }
 function checkboxDoneThisMonth(goalId){ return !!(state.checkLogs[goalId] && state.checkLogs[goalId][thisMonth()]); }
+function checkboxDoneOn(goalId, cadence, dateStr){
+  const log = state.checkLogs[goalId] || {};
+  if(cadence==='monthly') return !!log[monthKey(dateStr)];
+  if(cadence==='weekly') return weekDates(dateStr).some(d => log[d]);
+  return !!log[dateStr];
+}
 function dailyStreak(goalId){
   const log = state.checkLogs[goalId] || {};
   let streak = 0; let cursor = todayStr();
@@ -680,9 +686,9 @@ function weeklyStreak(goalId){
 }
 
 /* ---------- Tally type ---------- */
-function logTally(goalId){
+function logTally(goalId, targetDate){
   if(!state.tallyLogs[goalId]) state.tallyLogs[goalId] = [];
-  state.tallyLogs[goalId].push(todayStr());
+  state.tallyLogs[goalId].push(targetDate || todayStr());
   saveState(); render();
 }
 function undoTally(goalId){
@@ -709,10 +715,10 @@ function tallyCountInPeriod(goalId, cadence, refDate=todayStr()){
 }
 
 /* ---------- Amount type ---------- */
-function logAmount(goalId, amount){
+function logAmount(goalId, amount, targetDate){
   if(!amount || isNaN(amount)) return;
   if(!state.amountLogs[goalId]) state.amountLogs[goalId] = [];
-  state.amountLogs[goalId].push({ date: todayStr(), amount: Number(amount) });
+  state.amountLogs[goalId].push({ date: targetDate || todayStr(), amount: Number(amount) });
   saveState(); render();
 }
 function amountSumInPeriod(goalId, resetCadence, refDate=todayStr()){
@@ -816,17 +822,91 @@ function cadenceLabel(c){ return c==='daily' ? 'day' : c==='weekly' ? 'week' : c
 function toggleActionMenu(id){
   ui.actionMenuFor = (ui.actionMenuFor===id) ? null : id;
   ui.confirmDeleteGoal = null;
+  ui.backdateFor = null;
   render();
 }
 function goalActions(goal){
   if(ui.actionMenuFor!==goal.id){
     return `<button class="icon-btn mini dots" onclick="toggleActionMenu('${goal.id}')" title="actions">⋯</button>`;
   }
-  return `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',-1)" title="move up">▲</button>` +
+  const backdateable = goal.type!=='stages'; // stages are a single current position, not per-day
+  return (backdateable ? `<button class="icon-btn mini" onclick="startBackdate('${goal.id}')" title="log a past day">date</button>` : '') +
+    `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',-1)" title="move up">▲</button>` +
     `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',1)" title="move down">▼</button>` +
     `<button class="icon-btn mini" onclick="startEditGoal('${goal.id}')" title="edit goal">✎</button>` +
     `<button class="small-x ${ui.confirmDeleteGoal===goal.id?'confirming':''}" onclick="removeGoal('${goal.id}')">${ui.confirmDeleteGoal===goal.id ? 'Confirm?' : '✕'}</button>` +
     `<button class="icon-btn mini" onclick="toggleActionMenu('${goal.id}')" title="close">×</button>`;
+}
+
+/* ---------- Backdating (log a past day) ---------- */
+function startBackdate(goalId){
+  ui.backdateFor = goalId;
+  ui.actionMenuFor = null;
+  ui.backdateDate = addDays(todayStr(), -1); // default to yesterday
+  ui.backdateAmount = '';
+  render();
+}
+function cancelBackdate(){ ui.backdateFor = null; render(); }
+function updateBackdateDate(value){
+  // never allow a future date
+  ui.backdateDate = value > todayStr() ? todayStr() : value;
+  render();
+}
+function applyBackdateCheckbox(goalId, cadence){
+  toggleCheckbox(goalId, cadence, ui.backdateDate);
+}
+function applyBackdateTally(goalId){
+  logTally(goalId, ui.backdateDate);
+}
+function applyBackdateAmount(goalId){
+  const val = document.getElementById('backdateAmt_'+goalId);
+  const amount = val ? val.value : '';
+  if(!amount || isNaN(amount)){ showToast('Enter an amount first.'); return; }
+  logAmount(goalId, amount, ui.backdateDate);
+  if(val) val.value = '';
+}
+function backdateDateLabel(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const isYesterday = dateStr === addDays(todayStr(), -1);
+  return (isYesterday ? 'Yesterday, ' : '') + d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+}
+function renderBackdatePanel(goal, color){
+  const date = ui.backdateDate || addDays(todayStr(), -1);
+  let control = '';
+  if(goal.type==='checkbox'){
+    const on = checkboxDoneOn(goal.id, goal.cadence, date);
+    const periodLabel = goal.cadence==='monthly' ? 'that month' : goal.cadence==='weekly' ? 'that week' : 'that day';
+    control = `
+      <div class="row" style="border-top:none; padding-top:4px;">
+        <button class="check ${on?'on':''}" style="${on?`background:${color};`:''}" onclick="applyBackdateCheckbox('${goal.id}','${goal.cadence}')">${checkIcon()}</button>
+        <div class="label">Mark done for ${periodLabel}</div>
+      </div>`;
+  } else if(goal.type==='tally'){
+    control = `
+      <div class="add-row" style="margin-top:4px;">
+        <button class="util-btn" style="background:${color};" onclick="applyBackdateTally('${goal.id}')">+1 on this date</button>
+      </div>`;
+  } else if(goal.type==='amount'){
+    control = `
+      <div class="add-row" style="margin-top:4px;">
+        <input type="number" id="backdateAmt_${goal.id}" placeholder="0" />
+        <button class="util-btn" style="background:${color};" onclick="applyBackdateAmount('${goal.id}')">Log on this date</button>
+      </div>`;
+  } else if(goal.type==='list'){
+    control = `<div class="type-hint">List items already show the date you added them — just add it normally below.</div>`;
+  }
+  return `
+    <div class="goal-form" style="margin-top:6px;">
+      <div>
+        <label>Date</label>
+        <input type="date" value="${date}" max="${todayStr()}" onchange="updateBackdateDate(this.value)" />
+      </div>
+      <div class="type-hint">${esc(backdateDateLabel(date))}</div>
+      ${control}
+      <div class="form-actions">
+        <button class="util-btn outline" onclick="cancelBackdate()">Done</button>
+      </div>
+    </div>`;
 }
 
 /* ---------- Arc (today's light) ---------- */
@@ -874,6 +954,11 @@ function renderArc(){
 /* ---------- Goal row rendering ---------- */
 function renderGoalRow(goal, color){
   if(ui.editingGoal===goal.id) return renderGoalForm(goal.categoryId);
+  const main = renderGoalMain(goal, color);
+  const panel = ui.backdateFor===goal.id ? renderBackdatePanel(goal, color) : '';
+  return main + panel;
+}
+function renderGoalMain(goal, color){
   if(goal.type==='checkbox'){
     if(goal.cadence==='daily'){
       const on = checkboxDoneToday(goal.id);
