@@ -56,6 +56,8 @@
 
   .row{ display:flex; align-items:center; gap:12px; padding:9px 0; }
   .row + .row{ border-top:1px dashed var(--line); }
+  .row.paused-row{ opacity:0.7; }
+  .row.paused-row .meta{ font-style:italic; }
   .row .label{ flex:1; font-size:14.5px; line-height:1.3; }
   .row .meta{ font-family:'IBM Plex Mono', monospace; font-size:11px; opacity:0.55; white-space:nowrap; }
   .check{ width:24px; height:24px; border-radius:7px; border:1.5px solid rgba(42,38,32,0.25); background:transparent; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition: background 0.15s, border-color 0.15s; }
@@ -569,6 +571,31 @@ function removeGoal(id){
   state.goals = state.goals.filter(g=>g.id!==id);
   saveState(); render();
 }
+
+/* ---------- Pausing ---------- */
+function pauseGoal(goalId){
+  const goal = state.goals.find(g=>g.id===goalId);
+  if(!goal) return;
+  if(!goal.pauses) goal.pauses = [];
+  if(isCurrentlyPaused(goal)) return; // already paused
+  goal.pauses.push({ start: todayStr(), end: null });
+  ui.actionMenuFor = null;
+  saveState(); render();
+}
+function resumeGoalTracking(goalId){
+  const goal = state.goals.find(g=>g.id===goalId);
+  if(!goal || !goal.pauses) return;
+  const open = goal.pauses.find(p=>p.end===null);
+  if(!open) return;
+  if(open.start === todayStr()){
+    // paused and resumed the same day — treat as if it never happened
+    goal.pauses = goal.pauses.filter(p=>p!==open);
+  } else {
+    open.end = addDays(todayStr(), -1); // yesterday was the last paused day; today counts again
+  }
+  ui.actionMenuFor = null;
+  saveState(); render();
+}
 function startAddGoal(categoryId){
   ui.addingGoalFor = categoryId;
   ui.draft = { type:'checkbox', cadence:'daily', name:'', target:4, unit:'', resetCadence:'weekly', stagesText:'' };
@@ -830,7 +857,12 @@ function goalActions(goal){
     return `<button class="icon-btn mini dots" onclick="toggleActionMenu('${goal.id}')" title="actions">⋯</button>`;
   }
   const backdateable = goal.type!=='stages'; // stages are a single current position, not per-day
+  const pausable = goal.type==='checkbox' || goal.type==='tally' || goal.type==='amount';
+  const paused = pausable && isCurrentlyPaused(goal);
   return (backdateable ? `<button class="icon-btn mini" onclick="startBackdate('${goal.id}')" title="log a past day">date</button>` : '') +
+    (pausable ? (paused
+      ? `<button class="icon-btn mini" onclick="resumeGoalTracking('${goal.id}')" title="resume tracking">resume</button>`
+      : `<button class="icon-btn mini" onclick="pauseGoal('${goal.id}')" title="pause tracking">pause</button>`) : '') +
     `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',-1)" title="move up">▲</button>` +
     `<button class="icon-btn mini" onclick="moveGoal('${goal.id}',1)" title="move down">▼</button>` +
     `<button class="icon-btn mini" onclick="startEditGoal('${goal.id}')" title="edit goal">✎</button>` +
@@ -958,7 +990,18 @@ function renderGoalRow(goal, color){
   const panel = ui.backdateFor===goal.id ? renderBackdatePanel(goal, color) : '';
   return main + panel;
 }
+function renderPausedRow(goal, color){
+  const since = currentPauseStart(goal);
+  const label = since ? `Paused since ${new Date(since+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})}` : 'Paused';
+  return `<div class="row paused-row">
+    <div class="label" style="opacity:0.55;">${esc(goal.name)}</div>
+    <div class="meta">${label}</div>
+    ${goalActions(goal)}
+  </div>`;
+}
 function renderGoalMain(goal, color){
+  const pausable = goal.type==='checkbox' || goal.type==='tally' || goal.type==='amount';
+  if(pausable && isCurrentlyPaused(goal)) return renderPausedRow(goal, color);
   if(goal.type==='checkbox'){
     if(goal.cadence==='daily'){
       const on = checkboxDoneToday(goal.id);
@@ -1146,6 +1189,38 @@ function weeksTouchingMonth(m, startDay, daysConsidered){
   return mondays;
 }
 
+// A goal can be paused for a stretch of time (see pauseGoal/resumeGoalTracking)
+// so a deliberate break doesn't count against its grade. isPausedOn checks a
+// single date against every recorded pause span for that goal.
+function isPausedOn(goal, dateStr){
+  if(!goal.pauses || !goal.pauses.length) return false;
+  return goal.pauses.some(p => dateStr >= p.start && (p.end===null || dateStr <= p.end));
+}
+function isCurrentlyPaused(goal){ return isPausedOn(goal, todayStr()); }
+function currentPauseStart(goal){
+  if(!goal.pauses) return null;
+  const open = goal.pauses.find(p=>p.end===null);
+  return open ? open.start : null;
+}
+// Days in [startDay, daysConsidered] of month m that are NOT paused —
+// replaces a raw day count as the grading denominator so paused days
+// neither help nor hurt the score.
+function activeDaysCount(goal, m, startDay, daysConsidered){
+  let count = 0;
+  for(let d=startDay; d<=daysConsidered; d++){
+    if(!isPausedOn(goal, m+'-'+pad2(d))) count++;
+  }
+  return count;
+}
+// Same idea for weekly-cadence goals: a week only drops out of the
+// denominator if EVERY day in it was paused — a partially-paused week
+// still needs a hit like normal.
+function activeWeeksTouchingMonth(goal, m, startDay, daysConsidered){
+  return weeksTouchingMonth(m, startDay, daysConsidered).filter(monday =>
+    !weekDates(monday).every(d => isPausedOn(goal, d))
+  );
+}
+
 // Returns null if the goal didn't exist yet during month m.
 // Otherwise returns { days, startDay } — days = how many days of month m count toward
 // this goal's grading (from its creation date forward), startDay = day-of-month it started.
@@ -1167,23 +1242,25 @@ function goalPctForMonth(goal, m){
   const win = effectiveWindowFor(goal, m);
   if(!win) return null; // goal didn't exist yet this month
   const daysConsidered = Math.max(daysConsideredFor(m),1);
-  const effDays = win.days;
-  const relevantWeeks = weeksTouchingMonth(m, win.startDay, daysConsidered);
+  const pausable = goal.type==='checkbox' || goal.type==='tally' || goal.type==='amount';
+  const effDays = pausable ? activeDaysCount(goal, m, win.startDay, daysConsidered) : win.days;
+  if(pausable && effDays===0) return null; // paused for this entire month — excluded, not penalized
+  const relevantWeeks = pausable ? activeWeeksTouchingMonth(goal, m, win.startDay, daysConsidered) : weeksTouchingMonth(m, win.startDay, daysConsidered);
   const effWeeks = Math.max(relevantWeeks.length, 1);
   const monthNum = parseInt(m.split('-')[1],10);
-  const proration = effDays/daysConsidered; // fraction of the month this goal has existed for
+  const proration = effDays/daysConsidered; // fraction of the month this goal was actively tracked
 
   if(goal.type==='checkbox'){
     const log = state.checkLogs[goal.id] || {};
     if(goal.cadence==='daily'){
-      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]).length;
+      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k] && !isPausedOn(goal,k)).length;
       return clampPct(count/effDays*100);
     }
     if(goal.cadence==='weekly'){
       // Check each relevant week's FULL 7-day span for a hit, not just the
       // days that happen to fall in this month — a checkmark on the tail
       // end of a boundary week still counts for that week.
-      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d])).length;
+      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d] && !isPausedOn(goal,d))).length;
       return clampPct(weeksHit/effWeeks*100);
     }
     return log[m] ? 100 : 0;
@@ -1262,30 +1339,33 @@ function monthLabelFor(m){
 function summaryStatFor(goal, m){
   const win = effectiveWindowFor(goal, m);
   if(!win) return 'not started yet';
-  const effDays = win.days;
   const daysConsidered = Math.max(daysConsideredFor(m),1);
-  const relevantWeeks = weeksTouchingMonth(m, win.startDay, daysConsidered);
+  const pausable = goal.type==='checkbox' || goal.type==='tally' || goal.type==='amount';
+  const effDays = pausable ? activeDaysCount(goal, m, win.startDay, daysConsidered) : win.days;
+  if(pausable && effDays===0) return 'Paused all month';
+  const relevantWeeks = pausable ? activeWeeksTouchingMonth(goal, m, win.startDay, daysConsidered) : weeksTouchingMonth(m, win.startDay, daysConsidered);
   const effWeeks = Math.max(relevantWeeks.length, 1);
+  const pausedNote = (pausable && m===thisMonth() && isCurrentlyPaused(goal)) ? ' (paused)' : '';
   if(goal.type==='checkbox'){
     const log = state.checkLogs[goal.id] || {};
     if(goal.cadence==='daily'){
-      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k]).length;
-      return `${count} / ${effDays} days`;
+      const count = Object.keys(log).filter(k=>k.length===10 && monthKey(k)===m && log[k] && !isPausedOn(goal,k)).length;
+      return `${count} / ${effDays} active days${pausedNote}`;
     }
     if(goal.cadence==='weekly'){
-      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d])).length;
-      return `${weeksHit} / ${effWeeks} weeks`;
+      const weeksHit = relevantWeeks.filter(monday => weekDates(monday).some(d => log[d] && !isPausedOn(goal,d))).length;
+      return `${weeksHit} / ${effWeeks} weeks${pausedNote}`;
     }
     return log[m] ? 'Done ✓' : 'Not yet';
   }
   if(goal.type==='tally'){
     const count = (state.tallyLogs[goal.id]||[]).filter(d=>monthKey(d)===m).length;
-    return `${count} logged this month`;
+    return `${count} logged this month${pausedNote}`;
   }
   if(goal.type==='amount'){
     const sum = (state.amountLogs[goal.id]||[]).filter(e=>monthKey(e.date)===m).reduce((a,e)=>a+e.amount,0);
     const allTime = amountSumAllTime(goal.id);
-    return goal.resetCadence==='never' ? `${allTime} ${esc(goal.unit||'')} all-time` : `${sum} ${esc(goal.unit||'')} this month`;
+    return (goal.resetCadence==='never' ? `${allTime} ${esc(goal.unit||'')} all-time` : `${sum} ${esc(goal.unit||'')} this month`) + pausedNote;
   }
   if(goal.type==='stages'){
     const hist = state.stageHistory[goal.id]||{};
