@@ -1589,21 +1589,16 @@ initialSync();
 try{
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').then((reg) => {
-      // Force a check for a newer version every time the app opens, rather
-      // than relying on the browser's own (sometimes infrequent) update
-      // schedule — important for a Home Screen app that may resume an old
-      // session for a long time instead of doing a full reload.
+      // Check for a newer version every time the app opens, rather than
+      // relying on the browser's own (sometimes infrequent) update
+      // schedule. This does NOT force a reload when an update is found —
+      // an earlier version of this code did, and under some conditions
+      // that produced a reload loop (the app repeatedly refreshing
+      // itself). The network-first navigation strategy already means the
+      // next normal open fetches the latest version, so an explicit
+      // forced reload isn't needed and isn't worth that risk.
       reg.update().catch(()=>{});
     }).catch(()=>{});
-    // Once a new version has taken over, do one automatic reload so the
-    // freshly-updated code actually starts running, instead of sitting
-    // installed-but-unused until the next manual close/reopen.
-    let refreshed = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if(refreshed) return;
-      refreshed = true;
-      location.reload();
-    });
   }
 } catch(e){ /* sandboxed preview — ignore */ }
 
